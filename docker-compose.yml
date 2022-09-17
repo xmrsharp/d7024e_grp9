@@ -1,9 +1,8 @@
 
 version: "3"
 services:
-  kademliaNodes:
+  kademlia_nodes:
     image: tutum/hello-world
-    # image: kadlab:lateist # Make sure your Docker image has this name.
     stdin_open: true
     tty: true
     deploy:
@@ -25,4 +24,4 @@ services:
       
 networks:
   kademlia_network:
-    name: test_network    
+    name: kademlia_network    
