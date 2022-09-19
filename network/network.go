@@ -1,10 +1,8 @@
 package network
 
 import (
-	"bytes"
-	"encoding/gob"
 	"log"
-    "net"
+	"net"
 	"strconv"
 	"sync"
 )
@@ -12,21 +10,19 @@ import (
 type Network struct {
 	wg             sync.WaitGroup
 	placeholder_id string
-	//TODO Add kademlia ID
 }
 
-// TODO constructor for server.
-// TODO plan, if ip is not full -> assume that this is the first node (i.e. dont connect).
+// TODO Constructor for server.
 func (network *Network) Listen(ip string, port int) {
 	addr := ip + ":" + strconv.Itoa(port)
 	udp_addr, err := net.ResolveUDPAddr("udp4", addr)
 	if err != nil {
-    	log.Println(err)
+		log.Println(err)
 	}
 	server_socket, err := net.ListenUDP("udp4", udp_addr)
 	if err != nil {
-	    log.Println(err)
-    }
+		log.Println(err)
+	}
 	log.Println("SERVING ON:", udp_addr)
 	defer network.wg.Wait()
 	defer server_socket.Close()
@@ -37,88 +33,63 @@ func (network *Network) Listen(ip string, port int) {
 			log.Println("FAILED TO READ SOCKET:", err)
 		} else {
 			network.wg.Add(1)
-            go network.handleRequest(buff[:n], caller_addr)
+			go network.handleRequest(buff[:n], caller_addr)
 		}
 	}
 }
 
-
-func encodeMsg(m msg) ([]byte, error){
-    var buf bytes.Buffer
-    enc := gob.NewEncoder(&buf)
-    err := enc.Encode(m)
-    if err != nil{
-        log.Panic("COULD NOT ENCODE MSG:", m, err)
-        return nil, nil
-    }
-    msg_buf := make([]byte,2048)
-    n, _ := buf.Read(msg_buf)
-    return msg_buf[:n],nil
-}
-
-func decodeMsg(inp []byte) (m msg, e error){
-    buf := bytes.NewBuffer(inp)
-    dec := gob.NewDecoder(buf)
-    var inc msg
-    err := dec.Decode(&inc)
-    if err != nil{
-        log.Println("COULD NOT DECODE INC MSG:", inp, err)
-        return inc, err
-    }
-    return inc, nil
- }
-
 func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
-	// TODO Check if addr in contact
-	// TODO Check wether or not a response is desired (basically as mentioned above, create some generall udp message struct.)
+	// TODO Insert update call to channel to check if caller (addr) is existing in routing table and if not add to routing table.
 	defer network.wg.Done()
-    decode_msg, err := decodeMsg(m)
-    if err != nil{
-        // Simply want to end goroutine nicely.
-        log.Println("REQUEST FAILED BY:", addr)
-        return
-    }
-    switch decode_msg.Method{
-    case Ping:
-        // TODO
-    case Store:
-        // TODO 
-    case FindData:
-        // TODO
-    case FindNode:
-        // TODO
-    default:
-        log.Println("REQUEST FAILED BY UNKNOWN METHOD:", decode_msg.Method)
-
-    }
-    // For testing, assuming all incoming messages are encoded via func above.
-    log.Println("Recieved from :", addr);
-    log.Println("RECIEVED MSG:", decode_msg);
-    ping_msg:= msg{FindNode, "TESTING"}
-	log.Println("TEST msg:",ping_msg);
-	test_encode, _ := encodeMsg(ping_msg)
-    log.Println("ECODED MSG: ", test_encode);
-	test_decode, _ := decodeMsg(test_encode);
-	log.Println("DECODED MSG: ", test_decode);
+	decode_msg, err := decodeMsg(m)
+	if err != nil {
+		// Simply want to end routine nicely.
+		log.Println("UNKNOWN REQUEST BY:", addr)
+		return
+	}
+	switch decode_msg.Method {
+	case Ping:
+		log.Println("RECIEVED PING REQUEST FROM:", addr)
+		network.SendPingMessage(addr)
+	case Store:
+		log.Println("RECIEVED STORE REQUEST FROM:", addr)
+	case FindData:
+		log.Println("RECIEVED FIND_DATA REQUEST FROM:", addr)
+	case FindNode:
+		log.Println("RECIEVED FIND_NODE REQUEST FROM:", addr)
+	default:
+		log.Println("REQUEST FAILED BY UNKNOWN METHOD:", decode_msg.Method)
+	}
 }
 
-func (network *Network) sendRequest() {
-    
+func (network *Network) sendRequest(m msg, caller *net.UDPAddr) {
+	payload, _ := encodeMsg(m)
+	conn, err := net.DialUDP("udp4", nil, caller)
+	if err != nil {
+		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", caller)
+	}
+	_, err = conn.Write(payload)
+	if err != nil {
+		log.Println("FAILED TO WRITE TO: ", caller.AddrPort())
+	} else {
+		log.Println("SENT REQ TO: ", caller)
+	}
+
 }
 
-// Inc contant -> (ID, IP ADDRESS, DISTANCE.)
-//func (network *Network) SendPingMessage(contact *Contact) {
-// Simply ping ip address and append our contact info.
-//
-//}
+// TODO Change to take contact information when that part is complete.
+// func (network *Network) SendPingMessage(contact *Contact) {
+func (network *Network) SendPingMessage(addr *net.UDPAddr) {
+	network.sendRequest(msg{Ping, "PONG"}, addr)
+}
 
-//func (network *Network) SendFindContactMessage(contact *Contact) {
-// TODO
-//}
+func (network *Network) SendFindContactMessage(contact *Contact) {
+	// TODO
+}
 
 // Return wrapper of contact lists or data.
 func (network *Network) SendFindDataMessage(hash string) {
-	// TODO
+	//TODO
 }
 
 // Return nothing as we're simply passing data to others to handle
