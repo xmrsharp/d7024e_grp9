@@ -12,6 +12,18 @@ type msg struct {
 	Payload string
 }
 
+// PayLoad can either be -
+// ping (simply kademliaID),
+// store (Key (which should be kademliaID) and value,),
+// find_node (KademliaID to find -> return list of kademliaID and address)
+// find_value (Value) -> same as find_node but if a node has the value simply return that shiet.
+
+// Need to add contents for Ping, Store, FindNode, FindValue or are we simply just passing argumetns?
+type content struct {
+	Ping     string
+	FindNode (string)
+}
+
 // Careful with this 'enumeration' method, simple integers will work aswell.
 type rpc_method int
 
