@@ -1,4 +1,4 @@
-package network
+package d7024e
 
 import (
 	"bytes"
@@ -6,22 +6,27 @@ import (
 	"log"
 )
 
-// Have to keep attributes exported as encoding/gob package requires exported struct fields
+// TODO Refactor name from msg -> packet (application layer messages called packets...)
+// NOTE encoding/gob requires struct fields to be exported.
 type msg struct {
 	Method  rpc_method
-	Payload string
+	Payload content
 }
 
-// PayLoad can either be -
-// ping (simply kademliaID),
-// store (Key (which should be kademliaID) and value,),
-// find_node (KademliaID to find -> return list of kademliaID and address)
-// find_value (Value) -> same as find_node but if a node has the value simply return that shiet.
+// Simply have candidates or the respective value. eeez.
+//Basically just need method and candidates, or key,value, or contact. (single contact).
 
-// Need to add contents for Ping, Store, FindNode, FindValue or are we simply just passing argumetns?
 type content struct {
-	Ping     string
-	FindNode (string)
+	Ping       Contact   // Contains caller id. Will only respond.
+	Value      [160]byte // FindValue: Find value.
+	Store      Tuple     // Store: Key, Value
+	Candidates []Contact // Store/FindNode/FindValue candidates if not found.
+	FindNode   Contact   // Caller Key(kademlia ID) -> return (IP, Node ID) tuple for eahc of the k nodes closets to the target id.
+}
+
+type Tuple struct {
+	Key   KademliaID
+	Value KademliaID
 }
 
 // Careful with this 'enumeration' method, simple integers will work aswell.
@@ -30,8 +35,8 @@ type rpc_method int
 const (
 	Ping rpc_method = iota
 	Store
-	FindData
 	FindNode
+	FindValue
 )
 
 func encodeMsg(m msg) ([]byte, error) {
