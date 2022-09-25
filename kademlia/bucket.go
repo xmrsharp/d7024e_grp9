@@ -1,4 +1,5 @@
 package d7024e
+
 import (
 	"container/list"
 )

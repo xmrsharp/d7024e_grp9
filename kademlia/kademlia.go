@@ -1,13 +1,18 @@
 package d7024e
 
 import (
+<<<<<<< HEAD
 	"fmt"
 	"log"
 	"strconv"
+=======
+	"D7024E_GRP9/kademlia/datastore"
+>>>>>>> Added datastore + testing for datastore
 )
 
 // Basically the main struct of cademlia, this is the ocntainer whihc holds all the other containers.
 type Kademlia struct {
+<<<<<<< HEAD
 	server            *Network
 	ch_network_input  <-chan msg
 	ch_network_output chan<- msg
@@ -102,6 +107,15 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 		active_calls--
 	}
 	return current_closest_node
+=======
+	test datastore.DataStore
+}
+
+func(node *Kademlia) Init()
+
+func (kademlia *Kademlia) LookupContact(target *Contact) {
+	// TODO
+>>>>>>> Added datastore + testing for datastore
 }
 
 // Check if target is within candidates, if not resend call to candidates of target.
@@ -120,8 +134,13 @@ func (node *Kademlia) LookupData(hash string) {
 	// TODO
 }
 
+<<<<<<< HEAD
 func (node *Kademlia) Store(data []byte) {
 	// TODO
+=======
+func (node *Kademlia) Store(data *string) {
+	node.test.Insert(*data)
+>>>>>>> Added datastore + testing for datastore
 }
 
 func (node *Kademlia) genCheckBuckets() {
