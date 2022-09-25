@@ -1,73 +1,104 @@
 package d7024e
 
-// Plan:
-//  - unique identifier.
-//  - should every ip simply be 0.0.0.0??
-//  - If routing table is empty -> pass arg to connect to.
 import (
-    "fmt"
-    "net"
-    "sync"
+	"log"
+	"net"
+	"sync"
 )
 
-// Strategy:
-//  - Should ALWAYS be listening for incoming connections.
-//  - When connecting to other servers -> make request and go routine on response.
 type Network struct {
-    wg sync.WaitGroup
-    self_id KademliaID // storing pointer to id here as we need to send our id to any caller etc.
+	Wg       sync.WaitGroup
+	addrs    *net.UDPAddr
+	write_ch chan<- msg
+	read_ch  <-chan msg
 }
 
-func (network *Network) Listen(ip string, port int) {
-    server_socket, err := net.Listen("udp",ip+":"+port)
-    if err != nil{
-        fmt.Println("failed to bind server on: ",ip+":"+port,"\nReason: ",err);
-    }
-    // Order matters? 
-    defer network.wg.Wait()
-    defer server_socket.Close()
-    for{
-        conn, err := server_socket.Accept()
-        if err != nil{
-            fmt.Println("error dealing with conn: ",err);
-            break;
-        }else{
-            // Conn accepted.
-            network.wg.Add(1)
-            go handleRequest(conn)
-        }
-    }
+func InitNetwork(addrs string, write chan<- msg, read <-chan msg) *Network {
+	udp_addr, err := net.ResolveUDPAddr("udp4", addrs)
+	if err != nil {
+		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
+	}
+	network := Network{sync.WaitGroup{}, udp_addr, write, read}
+	return &network
 }
 
-func handleRequest(conn net.Conn){
-    // Note, udp packets are
-    headers := make([]byte, 8)
-    n_bytes, err := conn.Read(headers)
-    fmt.Println("Recieved following headers:",string(headers));
-    buff := make([]byte, 8)
-    n_bytes, err := conn.Read(buff) 
+func (network *Network) Listen() {
+	server_socket, err := net.ListenUDP("udp4", network.addrs)
+	if err != nil {
+		log.Println(err)
+	}
+	log.Println("SERVING ON:", network.addrs)
+	defer server_socket.Close()
+	for {
+		buff := make([]byte, 1024, 1024)
+		n, caller_addr, err := server_socket.ReadFromUDP(buff)
+		if err != nil {
+			log.Println("FAILED TO READ SOCKET:", err)
+		} else {
+			network.Wg.Add(1)
+			go network.handleRequest(buff[:n], caller_addr)
+		}
+	}
 }
 
-// Inc contant -> (ID, IP ADDRESS, DISTANCE.)
-func (network *Network) SendPingMessage(contact *Contact) {
-	// Simply ping ip address and append our contact info.
-    //  
+func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
+	defer network.Wg.Done()
+	decode_msg, err := decodeMsg(m)
+	if err != nil {
+		// Simply want to end routine nicely.
+		log.Println("UNKNOWN MSG BY:", addr)
+		return
+	}
+	log.Println("RECIEVED: ", decode_msg.Method, " REQUEST FROM: ", addr)
+	network.write_ch <- decode_msg
 }
 
-// These methods does not return anything? dacuc?
-// Return contact or list of contacts?
-func (network *Network) SendFindContactMessage(contact *Contact) {
-	// TODO
+// Here need to alter the dialup to simply call the addrs from contact.
+func (network *Network) sendRequest(m msg, to Contact) {
+	payload, _ := encodeMsg(m)
+	log.Println("ADDRESS:", to.Address)
+	udp_addr, err := net.ResolveUDPAddr("udp4", to.Address)
+	if err != nil {
+		// TODO Here alert node to remove contact from routing table
+		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
+	}
+	conn, err := net.DialUDP("udp4", nil, udp_addr)
+	if err != nil {
+		// TODO Here alert node to remove contact from routing table
+		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
+	}
+	_, err = conn.Write(payload)
+	defer conn.Close()
+	if err != nil {
+		// TODO Here alert node to remove contact from routing table
+		log.Println("FAILED TO WRITE TO: ", udp_addr)
+	} else {
+		log.Println("SENT REQ: ", m.Method, " TO: ", to.Address)
+	}
+
 }
 
+// FOR ALL THE BELOW SEND MESSAGES WE WILL
+// TODO Change to take contact information when that part is complete.
+// func (network *Network) SendPingMessage(contact *Contact) {
+//func (network *Network) SendPingMessage(self *Contact, contact *Contact) {
+//	m := new(msg)
+//	m.Method = Ping
+//
+//	//network.sendRequest(msg{Ping, "PING"}, addr)
+//	network.sendRequest(*m, addr)
+//}
+
+// func (network *Network) SendFindContactMessage(contact *Contact) {
+// 	// TODO
+// }
 
 // Return wrapper of contact lists or data.
-func (network *Network) SendFindDataMessage(hash string) {
-	// TODO
-}
+// func (network *Network) SendFindDataMessage(hash string) {
+// 	//TODO
+// }
 
 // Return nothing as we're simply passing data to others to handle
-// Or for us to store if we're closer/closest.
-func (network *Network) SendStoreMessage(data []byte) {
-	// TODO
-}
+// func (network *Network) SendStoreMessage(data []byte) {
+// 	// TODO
+// }

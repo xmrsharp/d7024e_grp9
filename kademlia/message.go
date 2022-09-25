@@ -10,6 +10,7 @@ import (
 // NOTE encoding/gob requires struct fields to be exported.
 type msg struct {
 	Method  rpc_method
+	Caller  Contact // Will need an address of where to respond to as each instance is only keeping an open port.
 	Payload content
 }
 
@@ -17,7 +18,7 @@ type msg struct {
 //Basically just need method and candidates, or key,value, or contact. (single contact).
 
 type content struct {
-	Ping       Contact   // Contains caller id. Will only respond.
+	PingPong   string    //Simply calling it for face value, ping pong.
 	Value      [160]byte // FindValue: Find value.
 	Store      Tuple     // Store: Key, Value
 	Candidates []Contact // Store/FindNode/FindValue candidates if not found.
@@ -38,6 +39,11 @@ const (
 	FindNode
 	FindValue
 )
+
+// Uncesseary function.
+//func CreateMsg(self Contact, method rpc_method, payload content) msg {
+//	return msg{self, method, payload}
+//}
 
 func encodeMsg(m msg) ([]byte, error) {
 	var buf bytes.Buffer
