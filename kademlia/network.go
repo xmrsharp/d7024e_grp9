@@ -74,24 +74,34 @@ func (network *Network) sendRequest(m msg, to Contact) {
 		log.Println("FAILED TO WRITE TO: ", udp_addr)
 	} else {
 		log.Println("SENT REQ: ", m.Method, " TO: ", to.Address)
+		conn.Close()
 	}
 
 }
 
-// FOR ALL THE BELOW SEND MESSAGES WE WILL
-// TODO Change to take contact information when that part is complete.
-// func (network *Network) SendPingMessage(contact *Contact) {
-//func (network *Network) SendPingMessage(self *Contact, contact *Contact) {
-//	m := new(msg)
-//	m.Method = Ping
-//
-//	//network.sendRequest(msg{Ping, "PING"}, addr)
-//	network.sendRequest(*m, addr)
-//}
+// TODO Refactor: awkward having to append self to every packet payload.
+func (network *Network) SendPingMessage(self *Contact, caller *Contact, pingMsg string) {
+	m := new(msg)
+	m.Method = Ping
+	m.Caller = *self
+	m.Payload.PingPong = pingMsg
+	network.sendRequest(*m, *caller)
+}
 
-// func (network *Network) SendFindContactMessage(contact *Contact) {
-// 	// TODO
-// }
+func (network *Network) respondFindContactMessage(self *Contact, caller *Contact, candidates []Contact) {
+	m := new(msg)
+	m.Method = FindNode
+	m.Caller = *self
+	m.Payload.Candidates = candidates
+	network.sendRequest(*m, *caller)
+}
+func (network *Network) SendFindContactMessage(self *Contact, to *Contact, target KademliaID) {
+	m := new(msg)
+	m.Method = FindNode
+	m.Caller = *self
+	m.Payload.FindNode = target
+	network.sendRequest(*m, *to)
+}
 
 // Return wrapper of contact lists or data.
 // func (network *Network) SendFindDataMessage(hash string) {

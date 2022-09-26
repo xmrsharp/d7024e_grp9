@@ -18,11 +18,12 @@ type msg struct {
 //Basically just need method and candidates, or key,value, or contact. (single contact).
 
 type content struct {
-	PingPong   string    //Simply calling it for face value, ping pong.
-	Value      [160]byte // FindValue: Find value.
-	Store      Tuple     // Store: Key, Value
-	Candidates []Contact // Store/FindNode/FindValue candidates if not found.
-	FindNode   Contact   // Caller Key(kademlia ID) -> return (IP, Node ID) tuple for eahc of the k nodes closets to the target id.
+	PingPong   string     //Simply calling it for face value, ping pong.
+	Key        [160]byte  // FindValue: Find value.
+	Value      [160]byte  // Payload for findvalue
+	Store      Tuple      // Store: Key, Value
+	Candidates []Contact  // Store/FindNode/FindValue candidates if not found.
+	FindNode   KademliaID // Caller Key(kademlia ID) -> return (IP, Node ID) tuple for eahc of the k nodes closets to the target id.
 }
 
 type Tuple struct {

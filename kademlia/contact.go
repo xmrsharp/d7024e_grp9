@@ -7,6 +7,7 @@ import (
 
 // Contact definition
 // stores the KademliaID, the ip address and the distance
+// Change to net.UDPAddres instead of address string?
 type Contact struct {
 	ID       *KademliaID
 	Address  string
@@ -18,7 +19,7 @@ func NewContact(id *KademliaID, address string) Contact {
 	return Contact{id, address, nil}
 }
 
-// CalcDistance calculates the distance to the target and 
+// CalcDistance calculates the distance to the target and
 // fills the contacts distance field
 func (contact *Contact) CalcDistance(target *KademliaID) {
 	contact.distance = contact.ID.CalcDistance(target)
@@ -50,6 +51,20 @@ func (candidates *ContactCandidates) GetContacts(count int) []Contact {
 	return candidates.contacts[:count]
 }
 
+// GetClosest returns closest contact to set target.
+func (candidates *ContactCandidates) GetClosest() Contact {
+	candidates.Sort()
+	return candidates.contacts[0]
+}
+
+// PopContact pops closest contact to set target.
+func (candidates *ContactCandidates) PopClosest() Contact {
+	candidates.Sort()
+	temp := candidates.contacts[0]
+	candidates.contacts = candidates.contacts[1:]
+	return temp
+}
+
 // Sort the Contacts in ContactCandidates
 func (candidates *ContactCandidates) Sort() {
 	sort.Sort(candidates)
@@ -66,7 +81,7 @@ func (candidates *ContactCandidates) Swap(i, j int) {
 	candidates.contacts[i], candidates.contacts[j] = candidates.contacts[j], candidates.contacts[i]
 }
 
-// Less returns true if the Contact at index i is smaller than 
+// Less returns true if the Contact at index i is smaller than
 // the Contact at index j
 func (candidates *ContactCandidates) Less(i, j int) bool {
 	return candidates.contacts[i].Less(&candidates.contacts[j])
