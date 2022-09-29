@@ -13,6 +13,7 @@ import (
 // Basically the main struct of cademlia, this is the ocntainer whihc holds all the other containers.
 type Kademlia struct {
 <<<<<<< HEAD
+<<<<<<< HEAD
 	server            *Network
 	ch_network_input  <-chan msg
 	ch_network_output chan<- msg
@@ -109,15 +110,22 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 	return current_closest_node
 =======
 	test datastore.DataStore
+=======
+	Datastore datastore.DataStore
+	Routing *RoutingTable
+	Network *Network
+	ThisNode *Contact
+>>>>>>> Refactored kademlia.go
 }
 
 func(node *Kademlia) Init()
 
-func (kademlia *Kademlia) LookupContact(target *Contact) {
+func (node *Kademlia) LookupContact(target *Contact) {
 	// TODO
 >>>>>>> Added datastore + testing for datastore
 }
 
+<<<<<<< HEAD
 // Check if target is within candidates, if not resend call to candidates of target.
 func (node *Kademlia) FindContact(target Contact, candidates []Contact) {
 	// CHECK IF CANDIDATES CONTAINS TARGET -> RETURN TARGET.
@@ -130,6 +138,8 @@ func (node *Kademlia) FindContact(target Contact, candidates []Contact) {
 
 }
 
+=======
+>>>>>>> Refactored kademlia.go
 func (node *Kademlia) LookupData(hash string) {
 	// TODO
 }
@@ -139,6 +149,7 @@ func (node *Kademlia) Store(data []byte) {
 	// TODO
 =======
 func (node *Kademlia) Store(data *string) {
+<<<<<<< HEAD
 	node.test.Insert(*data)
 >>>>>>> Added datastore + testing for datastore
 }
@@ -211,4 +222,7 @@ func (node *Kademlia) Run() {
 
 	}
 
+=======
+	node.Datastore.Insert(*data)
+>>>>>>> Refactored kademlia.go
 }
