@@ -1,6 +1,7 @@
 package d7024e
 
 import (
+	"D7024E_GRP9/kademlia/datastore"
 	"fmt"
 	"log"
 	"strconv"
@@ -13,6 +14,7 @@ type Kademlia struct {
 	ch_network_output chan<- msg
 	ch_node_lookup    chan []Contact
 	routingTable      *RoutingTable
+	datastore         datastore.DataStore
 }
 
 // NOTE Addrs in both server & contact.
@@ -25,7 +27,8 @@ func InitKademlia(ip string, port int) *Kademlia {
 	server := InitNetwork(addrs, ch_network_input, ch_network_output)
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
 	routingTable := NewRoutingTable(selfContact)
-	kademlia_node := Kademlia{server, ch_network_input, ch_network_output, ch_node_lookup, routingTable}
+	datastore := datastore.New()
+	kademlia_node := Kademlia{server, ch_network_input, ch_network_output, ch_node_lookup, routingTable, datastore}
 	return &kademlia_node
 }
 
@@ -120,8 +123,8 @@ func (node *Kademlia) LookupData(hash string) {
 	// TODO
 }
 
-func (node *Kademlia) Store(data []byte) {
-	// TODO
+func (node *Kademlia) Store(data *string) {
+	node.datastore.Insert(*data)
 }
 
 func (node *Kademlia) genCheckBuckets() {
