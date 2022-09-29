@@ -97,6 +97,7 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 		// FOR EACH INCOMING NODE, SEND PING -> IF PONG (ADD TO ROUTING TABLE.)
 		for i := 0; i < len(temp_new_candidates); i++ {
 			temp_new_candidates[i].CalcDistance(target)
+			go node.server.SendPingMessage(temp_new_candidates[i], "PING")
 		}
 
 		// Here only need to check if the head of list is closer to target as the list will be ordered on arrival (closest at head).
@@ -151,7 +152,6 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 		if server_msg.Caller.Address == node.routingTable.me.Address {
 			log.Println("SUSPECT CALLER: IDENTICAL ADDRS OFF:", node.routingTable.me.Address)
 		} else {
-			//node.routingTable.AddContact(server_msg.Caller)
 			switch server_msg.Method {
 			case Ping:
 				if server_msg.Payload.PingPong == "PING" {
@@ -191,6 +191,7 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 			}
 
 		}
+		// Will add any incoming request caller to routingTable if possible.
 		node.routingTable.AddContact(server_msg.Caller)
 	}
 
