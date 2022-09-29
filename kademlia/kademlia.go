@@ -1,13 +1,10 @@
 package d7024e
 
 import (
-<<<<<<< HEAD
 	"fmt"
 	"log"
 	"strconv"
-=======
 	"D7024E_GRP9/kademlia/datastore"
->>>>>>> Added datastore + testing for datastore
 )
 
 // Basically the main struct of cademlia, this is the ocntainer whihc holds all the other containers.
