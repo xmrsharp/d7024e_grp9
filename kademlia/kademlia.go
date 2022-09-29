@@ -4,42 +4,56 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 )
 
-// Basically the main struct of cademlia, this is the ocntainer whihc holds all the other containers.
+type SharedMap struct {
+	mutex            *sync.Mutex
+	outgoingRegister map[*KademliaID]int
+}
+
+// SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
+func NewSharedMap() *SharedMap {
+	return &SharedMap{&sync.Mutex{}, make(map[*KademliaID]int)}
+}
+
+// Logic and state of Kademlia node
 type Kademlia struct {
 	server            *Network
+	outRequest        *SharedMap
 	ch_network_input  <-chan msg
 	ch_network_output chan<- msg
 	ch_node_lookup    chan []Contact
+	ch_node_response  chan []Contact
 	routingTable      *RoutingTable
 }
 
+// TODO Go over variable names, they're currently trash
 // NOTE Addrs in both server & contact.
-// TODO Revisit the channel types to send messages.
-func InitKademlia(ip string, port int) *Kademlia {
+func NewKademlia(ip string, port int) *Kademlia {
 	ch_network_input := make(chan msg)
 	ch_network_output := make(chan msg)
 	ch_node_lookup := make(chan []Contact)
+	ch_node_response := make(chan []Contact)
 	addrs := ip + ":" + strconv.Itoa(port)
-	server := InitNetwork(addrs, ch_network_input, ch_network_output)
+	outRequest := NewSharedMap()
+	server := InitNetwork(addrs, outRequest, ch_network_input, ch_network_output)
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
 	routingTable := NewRoutingTable(selfContact)
-	kademlia_node := Kademlia{server, ch_network_input, ch_network_output, ch_node_lookup, routingTable}
+	kademlia_node := Kademlia{server, outRequest, ch_network_input, ch_network_output, ch_node_lookup, ch_node_response, routingTable}
 	return &kademlia_node
 }
 
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
-	// 1: Check if contact exists withing routing table.
-	// 2: If it exists then return the contact.
-	// 3: else get the closest candidates to the node
 	candidates := node.routingTable.FindClosestContacts(target, 20)
 	node.server.respondFindContactMessage(&node.routingTable.me, caller, candidates)
+	for i := 0; i < len(candidates); i++ {
+		log.Println("	SENDING:", candidates[i].String())
+	}
 }
 
 // AKA Node lookup
-// TODO Check if i need to clear channel before each call to LUC
-// TODO Change hardcoded K value (set in routing table or pass to routing etc.)
+// TODO Change hardcoded K value and alpha value (set in routing table or pass to routing etc.)
 // TODO Need way of sorting to get closest nodes?
 func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 	hard_coded_k_value := 20
@@ -71,7 +85,7 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 			log.Println("LENGTH OF POST CURRENT_CANDIDATES:", current_candidates.Len())
 			// Check for alrdy consumed nodes
 			if consumed_candidates[temp_contact.ID] == 1 {
-				// Already consumed contact - dead end (false positive).
+				// Already consumed contact - dead end.
 				active_calls--
 			} else {
 				consumed_candidates[temp_contact.ID] = 1
@@ -138,17 +152,18 @@ func (node *Kademlia) genCheckBuckets() {
 func (node *Kademlia) Run() {
 	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
+	go node.BootLoader()
 	for {
 		// Routing table debugging
 		//fmt.Println("PRE ROUTING TABLE");
 		//node.genCheckBuckets()
 		server_msg := <-node.ch_network_input
-		log.Println("RECIEVED: ", server_msg.Caller, "FROM CH")
+		log.Println("MAIN LOOP RECIEVED: ", server_msg.Caller, "FROM CH")
 		if server_msg.Caller.Address == node.routingTable.me.Address {
 			log.Println("SUSPECT CALLER: IDENTICAL ADDRS OFF:", node.routingTable.me.Address)
 		} else {
+			log.Println("CHECKING METHOD")
 			node.routingTable.AddContact(server_msg.Caller)
-			// TODO In all requests check if candidates are not nil -> means we need to resend to candidates the same request.
 			switch server_msg.Method {
 			case Ping:
 				if server_msg.Payload.PingPong == "PING" {
@@ -166,19 +181,23 @@ func (node *Kademlia) Run() {
 					node.ReturnCandidates(&server_msg.Caller, &server_msg.Payload.FindNode)
 				} else {
 					log.Println("RECIEVED FINDNODE EVENT -> WITH CANDIDATES PAYLOAD")
-					// NODE LOOKUP AND FIND NODE NOT THE SAME THING.
-					// THE FINDNODE IS SIMPLY -> REQUEST TARGET RETURN K CLOSEST.
-					node.ch_node_lookup <- server_msg.Payload.Candidates
-					// FOR NODE LOOKUP -> INITIATE FIND NODE, IF RESPONSE CONTAINS TARGET OF
-					// FIND NODE, ADD TO CHANNEL SPECIFIC FOR NODE LOOKUP INSTANCE.
+					test_candidate := server_msg.Payload.Candidates
+					for i := 0; i < len(test_candidate); i++ {
+						log.Println("RECIEVED:", test_candidate[i].String())
 
-					// Then simply request a of the other k closests beginning nodes.
-
-					// Lookup terminates when it has gotten response of K closest
-					// Response, containing candidates. How to keep track of target her
-					// Not nil, so this is a response.
-					// Meaning we need to check if target can be found within candidates.
-					// And if they are. send to command channel or w/e that contact is found at some address
+					}
+					log.Println("LOCKING RESOURCE")
+					node.outRequest.mutex.Lock()
+					if node.outRequest.outgoingRegister[server_msg.Caller.ID] > 0 {
+						node.outRequest.outgoingRegister[server_msg.Caller.ID] = node.outRequest.outgoingRegister[server_msg.Caller.ID] - 1
+						node.outRequest.mutex.Unlock()
+						log.Println("INSERTING INTO CHANNEL")
+						node.ch_node_lookup <- server_msg.Payload.Candidates
+					} else {
+						// Simply want to insert into channel if requested.
+						log.Println("DID NOT EXPECT CALLER TO RESPOND WITH CANDIDATES")
+						node.outRequest.mutex.Unlock()
+					}
 				}
 			case FindValue:
 				log.Println("RECIEVED FINDVALUE EVENT")
@@ -187,9 +206,6 @@ func (node *Kademlia) Run() {
 			}
 
 		}
-		//fmt.Println("POST ROUTING TABLE");
-		//node.genCheckBuckets()
-
 	}
 
 }

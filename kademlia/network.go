@@ -7,18 +7,19 @@ import (
 )
 
 type Network struct {
-	Wg       sync.WaitGroup
-	addrs    *net.UDPAddr
-	write_ch chan<- msg
-	read_ch  <-chan msg
+	wg         sync.WaitGroup
+	outRequest *SharedMap
+	addrs      *net.UDPAddr
+	write_ch   chan<- msg
+	read_ch    <-chan msg
 }
 
-func InitNetwork(addrs string, write chan<- msg, read <-chan msg) *Network {
+func InitNetwork(addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
 	udp_addr, err := net.ResolveUDPAddr("udp4", addrs)
 	if err != nil {
 		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
 	}
-	network := Network{sync.WaitGroup{}, udp_addr, write, read}
+	network := Network{sync.WaitGroup{}, outRequest, udp_addr, write, read}
 	return &network
 }
 
@@ -30,29 +31,32 @@ func (network *Network) Listen() {
 	log.Println("SERVING ON:", network.addrs)
 	defer server_socket.Close()
 	for {
-		buff := make([]byte, 1024, 1024)
+		// Change size of reader.
+		buff := make([]byte, 4096, 4096)
 		n, caller_addr, err := server_socket.ReadFromUDP(buff)
 		if err != nil {
 			log.Println("FAILED TO READ SOCKET:", err)
 		} else {
-			network.Wg.Add(1)
+			network.wg.Add(1)
 			go network.handleRequest(buff[:n], caller_addr)
 		}
 	}
 }
 
 func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
-	defer network.Wg.Done()
+	defer network.wg.Done()
 	decode_msg, err := decodeMsg(m)
 	if err != nil {
 		// Simply want to end routine nicely.
 		log.Println("UNKNOWN MSG BY:", addr)
 		return
 	}
-	log.Println("RECIEVED: ", decode_msg.Method, " REQUEST FROM: ", addr)
+	log.Println("HANDLE REQUEST - RECIEVED: ", decode_msg.Method, " REQUEST FROM: ", addr)
 	network.write_ch <- decode_msg
+	log.Println("DOES THIS READ OR BLOCK")
 }
 
+// Add caller to awaiting result channel?
 // Here need to alter the dialup to simply call the addrs from contact.
 func (network *Network) sendRequest(m msg, to Contact) {
 	payload, _ := encodeMsg(m)
@@ -80,26 +84,32 @@ func (network *Network) sendRequest(m msg, to Contact) {
 }
 
 // TODO Refactor: awkward having to append self to every packet payload.
-func (network *Network) SendPingMessage(self *Contact, caller *Contact, pingMsg string) {
+func (network *Network) SendPingMessage(self *Contact, to *Contact, pingMsg string) {
 	m := new(msg)
 	m.Method = Ping
 	m.Caller = *self
 	m.Payload.PingPong = pingMsg
-	network.sendRequest(*m, *caller)
+	network.sendRequest(*m, *to)
 }
 
-func (network *Network) respondFindContactMessage(self *Contact, caller *Contact, candidates []Contact) {
+func (network *Network) respondFindContactMessage(self *Contact, to *Contact, candidates []Contact) {
 	m := new(msg)
 	m.Method = FindNode
 	m.Caller = *self
 	m.Payload.Candidates = candidates
-	network.sendRequest(*m, *caller)
+	network.outRequest.mutex.Lock()
+	network.outRequest.outgoingRegister[to.ID] += 1
+	network.outRequest.mutex.Unlock()
+	network.sendRequest(*m, *to)
 }
 func (network *Network) SendFindContactMessage(self *Contact, to *Contact, target KademliaID) {
 	m := new(msg)
 	m.Method = FindNode
 	m.Caller = *self
 	m.Payload.FindNode = target
+	network.outRequest.mutex.Lock()
+	network.outRequest.outgoingRegister[to.ID] += 1
+	network.outRequest.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }
 
