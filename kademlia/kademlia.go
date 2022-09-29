@@ -141,25 +141,20 @@ func (node *Kademlia) Store(data []byte) {
 	// TODO
 }
 
-func (node *Kademlia) bootLoader() {
-	// Simply perform node lookup on self to supplied main node.
-	// Hard coded for now for testing purpouses.
-	addrs := "192.168.38.201:8888"
-	boot_loader_id := NewKademliaID("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	boot_contact := NewContact(boot_loader_id, addrs)
-	// Append contact to routing table and search for self.
-	node.routingTable.AddContact(boot_contact)
+func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
+	if bootLoaderAddrs == "" {
+		return
+	}
+	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
+	node.routingTable.AddContact(bootContact)
 	log.Println("BOOT RETURN VALUE: ", node.LookupContact(node.routingTable.me.ID))
 }
 
-func (node *Kademlia) Run() {
+func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
-	go node.bootLoader()
+	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	for {
-		// Routing table debugging
-		//fmt.Println("PRE ROUTING TABLE");
-		//node.genCheckBuckets()
 		server_msg := <-node.ch_network_input
 		log.Println("MAIN LOOP RECIEVED: ", server_msg.Caller, "FROM CH")
 		if server_msg.Caller.Address == node.routingTable.me.Address {
