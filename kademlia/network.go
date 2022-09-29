@@ -7,6 +7,7 @@ import (
 )
 
 type Network struct {
+	msgHeader  Contact
 	wg         sync.WaitGroup
 	outRequest *SharedMap
 	addrs      *net.UDPAddr
@@ -14,12 +15,12 @@ type Network struct {
 	read_ch    <-chan msg
 }
 
-func InitNetwork(addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
+func InitNetwork(msgHeader Contact, addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
 	udp_addr, err := net.ResolveUDPAddr("udp4", addrs)
 	if err != nil {
 		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
 	}
-	network := Network{sync.WaitGroup{}, outRequest, udp_addr, write, read}
+	network := Network{msgHeader, sync.WaitGroup{}, outRequest, udp_addr, write, read}
 	return &network
 }
 
@@ -84,28 +85,28 @@ func (network *Network) sendRequest(m msg, to Contact) {
 }
 
 // TODO Refactor: awkward having to append self to every packet payload.
-func (network *Network) SendPingMessage(self *Contact, to *Contact, pingMsg string) {
+func (network *Network) SendPingMessage(to *Contact, pingMsg string) {
 	m := new(msg)
 	m.Method = Ping
-	m.Caller = *self
+	m.Caller = network.msgHeader
 	m.Payload.PingPong = pingMsg
 	network.sendRequest(*m, *to)
 }
 
-func (network *Network) respondFindContactMessage(self *Contact, to *Contact, candidates []Contact) {
+func (network *Network) respondFindContactMessage(to *Contact, candidates []Contact) {
 	m := new(msg)
 	m.Method = FindNode
-	m.Caller = *self
+	m.Caller = network.msgHeader
 	m.Payload.Candidates = candidates
 	network.outRequest.mutex.Lock()
 	network.outRequest.outgoingRegister[*to.ID] += 1
 	network.outRequest.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }
-func (network *Network) SendFindContactMessage(self *Contact, to *Contact, target KademliaID) {
+func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 	m := new(msg)
 	m.Method = FindNode
-	m.Caller = *self
+	m.Caller = network.msgHeader
 	m.Payload.FindNode = target
 	network.outRequest.mutex.Lock()
 	network.outRequest.outgoingRegister[*to.ID] += 1

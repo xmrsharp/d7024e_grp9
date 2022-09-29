@@ -37,8 +37,8 @@ func NewKademlia(ip string, port int) *Kademlia {
 	ch_node_response := make(chan []Contact)
 	addrs := ip + ":" + strconv.Itoa(port)
 	outRequest := NewSharedMap()
-	server := InitNetwork(addrs, outRequest, ch_network_input, ch_network_output)
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
+	server := InitNetwork(selfContact, addrs, outRequest, ch_network_input, ch_network_output)
 	routingTable := NewRoutingTable(selfContact)
 	kademlia_node := Kademlia{server, outRequest, ch_network_input, ch_network_output, ch_node_lookup, ch_node_response, routingTable}
 	return &kademlia_node
@@ -46,7 +46,7 @@ func NewKademlia(ip string, port int) *Kademlia {
 
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 	candidates := node.routingTable.FindClosestContacts(target, 20)
-	node.server.respondFindContactMessage(&node.routingTable.me, caller, candidates)
+	node.server.respondFindContactMessage(caller, candidates)
 	for i := 0; i < len(candidates); i++ {
 		log.Println("	SENDING:", candidates[i].String())
 		log.Println(candidates[i].distance)
@@ -90,7 +90,7 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 				active_calls--
 			} else {
 				consumed_candidates[temp_contact.ID] = 1
-				go node.server.SendFindContactMessage(&node.routingTable.me, &temp_contact, *target)
+				go node.server.SendFindContactMessage(&temp_contact, *target)
 			}
 			active_calls++
 		}
@@ -171,7 +171,7 @@ func (node *Kademlia) Run() {
 			case Ping:
 				if server_msg.Payload.PingPong == "PING" {
 					log.Println("RECIEVED PING EVENT")
-					node.server.SendPingMessage(&node.routingTable.me, &server_msg.Caller, "PONG")
+					node.server.SendPingMessage(&server_msg.Caller, "PONG")
 				} else {
 					log.Println("RECIEVED PONG EVENT")
 				}
