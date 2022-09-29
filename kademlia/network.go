@@ -98,7 +98,7 @@ func (network *Network) respondFindContactMessage(self *Contact, to *Contact, ca
 	m.Caller = *self
 	m.Payload.Candidates = candidates
 	network.outRequest.mutex.Lock()
-	network.outRequest.outgoingRegister[to.ID] += 1
+	network.outRequest.outgoingRegister[*to.ID] += 1
 	network.outRequest.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }
@@ -108,7 +108,7 @@ func (network *Network) SendFindContactMessage(self *Contact, to *Contact, targe
 	m.Caller = *self
 	m.Payload.FindNode = target
 	network.outRequest.mutex.Lock()
-	network.outRequest.outgoingRegister[to.ID] += 1
+	network.outRequest.outgoingRegister[*to.ID] += 1
 	network.outRequest.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }

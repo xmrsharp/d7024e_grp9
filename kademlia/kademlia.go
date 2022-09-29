@@ -9,12 +9,12 @@ import (
 
 type SharedMap struct {
 	mutex            *sync.Mutex
-	outgoingRegister map[*KademliaID]int
+	outgoingRegister map[KademliaID]int
 }
 
 // SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
 func NewSharedMap() *SharedMap {
-	return &SharedMap{&sync.Mutex{}, make(map[*KademliaID]int)}
+	return &SharedMap{&sync.Mutex{}, make(map[KademliaID]int)}
 }
 
 // Logic and state of Kademlia node
@@ -49,6 +49,7 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 	node.server.respondFindContactMessage(&node.routingTable.me, caller, candidates)
 	for i := 0; i < len(candidates); i++ {
 		log.Println("	SENDING:", candidates[i].String())
+		log.Println(candidates[i].distance)
 	}
 }
 
@@ -96,7 +97,14 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 		// for every read of new candidates, check if closer to target. if not
 		// Increase the number of visited nodes w/o finding closer contact.
 		temp_new_candidates = <-node.ch_node_lookup
+		// Investigate to why i have to recalculate the distances?
+		// FOR EACH INCOMING NODE, SEND PING -> IF PONG (ADD TO ROUTING TABLE.)
+		for i := 0; i < len(temp_new_candidates); i++ {
+			temp_new_candidates[i].CalcDistance(target)
+		}
+
 		log.Println("FIRST NODE SHOULD HAVE SAME DISTANCE SET", temp_new_candidates[0].distance)
+		log.Println(temp_new_candidates[0].String())
 		temp_new_candidates[0].CalcDistance(target)
 		log.Println("COMPARED TO", temp_new_candidates[0].distance)
 		log.Println("IF SAME -> REMOVE CALC DISTANCE ABOVE")
@@ -111,23 +119,18 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 		}
 		log.Println("SIZE CANDIDATES:", current_candidates.Len(), " SIZE NEW CAND:", len(temp_new_candidates))
 		current_candidates.Append(temp_new_candidates)
-		current_candidates.Sort()
+		log.Println("DID IT WORK")
+		for i := 0; i < current_candidates.Len(); i++ {
+			log.Println(current_candidates.contacts[i].distance)
+			log.Println("CANDIDATE", i, ": ", current_candidates.contacts[i].String())
+		}
+		log.Println("SIZE POST APPEND:", current_candidates.Len())
+
+		//(&current_candidates).Sort()
 		log.Println("SIZE AFTER APPEND:", current_candidates.Len())
 		active_calls--
 	}
 	return current_closest_node
-}
-
-// Check if target is within candidates, if not resend call to candidates of target.
-func (node *Kademlia) FindContact(target Contact, candidates []Contact) {
-	// CHECK IF CANDIDATES CONTAINS TARGET -> RETURN TARGET.
-	for i := 0; i < len(candidates); i++ {
-		//TODO Ping candidates.
-		// Create go routine, if in time get response from pong -> (maybe create some local datastructure list of queues etc.)
-		// If pong -> add to routing table & send request to findContact.
-		//TODO Shieet, need to check if target is to be found...
-	}
-
 }
 
 func (node *Kademlia) LookupData(hash string) {
@@ -138,21 +141,21 @@ func (node *Kademlia) Store(data []byte) {
 	// TODO
 }
 
-func (node *Kademlia) genCheckBuckets() {
-	for i := 0; i < 20; i++ {
-		num_entries := node.routingTable.buckets[i].Len()
-		fmt.Println("BUCKET:", i, " Contains ", num_entries, " number of entries.")
-		for j := node.routingTable.buckets[i].list.Front(); j != nil; j = j.Next() {
-			fmt.Println("V:", j.Value)
-		}
-	}
-
+func (node *Kademlia) bootLoader() {
+	// Simply perform node lookup on self to supplied main node.
+	// Hard coded for now for testing purpouses.
+	addrs := "192.168.38.201:8888"
+	boot_loader_id := NewKademliaID("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	boot_contact := NewContact(boot_loader_id, addrs)
+	// Append contact to routing table and search for self.
+	node.routingTable.AddContact(boot_contact)
+	log.Println("BOOT RETURN VALUE: ", node.LookupContact(node.routingTable.me.ID))
 }
 
 func (node *Kademlia) Run() {
 	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
-	go node.BootLoader()
+	go node.bootLoader()
 	for {
 		// Routing table debugging
 		//fmt.Println("PRE ROUTING TABLE");
@@ -163,7 +166,7 @@ func (node *Kademlia) Run() {
 			log.Println("SUSPECT CALLER: IDENTICAL ADDRS OFF:", node.routingTable.me.Address)
 		} else {
 			log.Println("CHECKING METHOD")
-			node.routingTable.AddContact(server_msg.Caller)
+			//node.routingTable.AddContact(server_msg.Caller)
 			switch server_msg.Method {
 			case Ping:
 				if server_msg.Payload.PingPong == "PING" {
@@ -186,16 +189,13 @@ func (node *Kademlia) Run() {
 						log.Println("RECIEVED:", test_candidate[i].String())
 
 					}
-					log.Println("LOCKING RESOURCE")
 					node.outRequest.mutex.Lock()
-					if node.outRequest.outgoingRegister[server_msg.Caller.ID] > 0 {
-						node.outRequest.outgoingRegister[server_msg.Caller.ID] = node.outRequest.outgoingRegister[server_msg.Caller.ID] - 1
+					if node.outRequest.outgoingRegister[*server_msg.Caller.ID] > 0 {
+						node.outRequest.outgoingRegister[*server_msg.Caller.ID] = node.outRequest.outgoingRegister[*server_msg.Caller.ID] - 1
 						node.outRequest.mutex.Unlock()
-						log.Println("INSERTING INTO CHANNEL")
 						node.ch_node_lookup <- server_msg.Payload.Candidates
 					} else {
 						// Simply want to insert into channel if requested.
-						log.Println("DID NOT EXPECT CALLER TO RESPOND WITH CANDIDATES")
 						node.outRequest.mutex.Unlock()
 					}
 				}
@@ -205,6 +205,19 @@ func (node *Kademlia) Run() {
 				log.Println("RECIEVED OTHER EVENT")
 			}
 
+		}
+		node.routingTable.AddContact(server_msg.Caller)
+	}
+
+}
+
+// TODO REMOVE: USED FOR TESTING PURPOSES ONLY
+func (node *Kademlia) genCheckBuckets() {
+	for i := 0; i < 20; i++ {
+		num_entries := node.routingTable.buckets[i].Len()
+		fmt.Println("BUCKET:", i, " Contains ", num_entries, " number of entries.")
+		for j := node.routingTable.buckets[i].list.Front(); j != nil; j = j.Next() {
+			fmt.Println("V:", j.Value)
 		}
 	}
 
