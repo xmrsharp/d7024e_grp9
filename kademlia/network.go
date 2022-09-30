@@ -54,7 +54,6 @@ func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
 	}
 	log.Println("HANDLE REQUEST - RECIEVED: ", decode_msg.Method, " REQUEST FROM: ", addr)
 	network.write_ch <- decode_msg
-	log.Println("DOES THIS READ OR BLOCK")
 }
 
 // Add caller to awaiting result channel?

@@ -7,6 +7,10 @@ import (
 	"sync"
 )
 
+const (
+	ALPHA_VALUE = 3
+)
+
 // SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
 type SharedMap struct {
 	mutex            *sync.Mutex
@@ -15,6 +19,18 @@ type SharedMap struct {
 
 func NewSharedMap() *SharedMap {
 	return &SharedMap{&sync.Mutex{}, make(map[KademliaID]int)}
+}
+
+func (sm *SharedMap) expectingIncRequest() bool {
+	sm.mutex.Lock
+	for k, v := range sm.outgoingRegister {
+		if v > 1 {
+			log.Println("--> Expecting response from:", k)
+			return true
+		}
+	}
+	return false
+
 }
 
 // Logic and state of Kademlia node
@@ -48,40 +64,29 @@ func NewKademlia(ip string, port int) *Kademlia {
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 	candidates := node.routingTable.FindClosestContacts(target, 20)
 	node.server.respondFindContactMessage(caller, candidates)
-	// TODO REMOVE: Only for testing and debugging
-	// for i := 0; i < len(candidates); i++ {
-	// 	log.Println("	SENDING:", candidates[i].String())
-	// 	log.Println(candidates[i].distance)
-	// }
 }
 
-// AKA Node lookup
-// TODO Change hardcoded K value and alpha value (set in routing table or pass to routing etc.)
-// TODO Currently only returning the closest value - change to return k closest and then simply pick the first one for lookups in cmnd line
-func (node *Kademlia) LookupContact(target *KademliaID) Contact {
-	hard_coded_k_value := 20
+func (node *Kademlia) NodeLookup(target *KademliaID) Contact {
+	// Initiate candidates from own routing table.
+	current_candidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
 
-	// Fetch closest nodes to target within own routing table (alpha closest).
-	current_candidates := ContactCandidates{node.routingTable.FindClosestContacts(target, hard_coded_k_value)}
-	// Initiating end condition.
+	// Inititate end condition.
 	current_closest_node := current_candidates.GetClosest()
 	probed_no_closer := 0
 
-	// Used for keeping track of consumed candidates.
 	consumed_candidates := make(map[*KademliaID]int)
 
-	// For keeping track of active requests.
+	// For keeping track off outgoing FindNode RPCs.
 	active_calls := 0
 
 	var temp_new_candidates []Contact
 
-	for probed_no_closer < hard_coded_k_value {
+	for probed_no_closer < BucketSize && node.outRequest.expectingIncRequest() {
 		log.Println("START OF OUTER LOOP")
 		if current_closest_node.ID.Equals(target) {
-			return current_closest_node
+			return // node.routingTable.FindClosestContacts(target, BucketSize)
 		}
-		// send out request for the alpha number of connections.
-		for active_calls < 3 && current_candidates.Len() > 0 {
+		for active_calls < ALPHA_VALUE && current_candidates.Len() > 0 {
 			temp_contact := current_candidates.PopClosest()
 			// Check for alrdy consumed nodes
 			if consumed_candidates[temp_contact.ID] == 1 {
@@ -89,20 +94,19 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 				active_calls--
 			} else {
 				consumed_candidates[temp_contact.ID] = 1
-				go node.server.SendFindContactMessage(&temp_contact, *target)
+				node.server.SendFindContactMessage(&temp_contact, *target)
 			}
 			active_calls++
 		}
 		// Increase the number of visited nodes w/o finding closer contact.
 		temp_new_candidates = <-node.ch_node_lookup
-		// Investigate to why i have to recalculate the distances?
-		// FOR EACH INCOMING NODE, SEND PING -> IF PONG (ADD TO ROUTING TABLE.)
+		// Investigate to why I have to recalculate the distances?
 		for i := 0; i < len(temp_new_candidates); i++ {
 			temp_new_candidates[i].CalcDistance(target)
 			go node.server.SendPingMessage(temp_new_candidates[i], "PING")
 		}
 
-		// Here only need to check if the head of list is closer to target as the list will be ordered on arrival (closest at head).
+		// Only need to check head of list as list is ordered on arrival.
 		if !current_closest_node.Less(&temp_new_candidates[0]) {
 			// Got closer to target, update current closest and succesfull probes.
 			probed_no_closer = 0
@@ -118,10 +122,14 @@ func (node *Kademlia) LookupContact(target *KademliaID) Contact {
 		//	log.Println("CANDIDATE", i, ": ", current_candidates.contacts[i].String())
 		//}
 
-		//(&current_candidates).Sort()
 		active_calls--
 	}
-	return current_closest_node
+	// return node.routingTable.FindClosestContacts(target, BucketSize)
+}
+
+func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Contact {
+	node.NodeLookup(target)
+	return node.routingTable.FindClosestContacts(target, count)
 }
 
 func (node *Kademlia) LookupData(hash string) {
@@ -139,9 +147,8 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
 	// Run node lookup to populate routing table.
-	res := node.LookupContact(node.routingTable.me.ID)
-	// TODO Remove: For testing purpouses only
-	log.Println("Closest neighbours", res)
+	node.NodeLookup(node.routingTable.me.ID)
+	log.Println("Closest neighbours:", node.routingTable.FindClosestContacts(node.routingTable.me.ID, BucketSize))
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
@@ -165,20 +172,14 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 			case Store:
 				log.Println("RECIEVED STORE EVENT")
 			case FindNode:
+				log.Println("RECIEVED FINDNODE EVENT")
 				if server_msg.Payload.Candidates == nil {
-					log.Println("RECIEVED FINDNODE EVENT -> WITHOUT CANDIDATES PAYLOAD")
 					// Inc request, so simply return candidates.
 					node.ReturnCandidates(&server_msg.Caller, &server_msg.Payload.FindNode)
 				} else {
-					log.Println("RECIEVED FINDNODE EVENT -> WITH CANDIDATES PAYLOAD")
-					// TODO REMOVE: FOR TESTING PURPOSES ONLY
-					// test_candidate := server_msg.Payload.Candidates
-					// for i := 0; i < len(test_candidate); i++ {
-					// 	log.Println("RECIEVED:", test_candidate[i].String())
-					// }
 					node.outRequest.mutex.Lock()
 					if node.outRequest.outgoingRegister[*server_msg.Caller.ID] > 0 {
-						node.outRequest.outgoingRegister[*server_msg.Caller.ID] = node.outRequest.outgoingRegister[*server_msg.Caller.ID] - 1
+						node.outRequest.outgoingRegister[*server_msg.Caller.ID] -= 1 // node.outRequest.outgoingRegister[*server_msg.Caller.ID] - 1
 						node.outRequest.mutex.Unlock()
 						node.ch_node_lookup <- server_msg.Payload.Candidates
 					} else {
