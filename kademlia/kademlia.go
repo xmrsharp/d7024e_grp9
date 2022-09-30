@@ -36,30 +36,28 @@ func (sm *SharedMap) expectingIncRequest() bool {
 
 // Logic and state of Kademlia node
 type Kademlia struct {
-	server            *Network
-	outRequest        *SharedMap
-	ch_network_input  <-chan msg
-	ch_network_output chan<- msg
-	ch_node_lookup    chan []Contact
-	ch_node_response  chan []Contact
-	routingTable      *RoutingTable
-	datastore         DataStore
+	server              *Network
+	outgoingRequests    *SharedMap
+	channelServerInput  <-chan msg
+	channelServerOutput chan<- msg
+	channelNodeLookup   chan []Contact
+	routingTable        *RoutingTable
+	datastore           DataStore
 }
 
 // TODO Go over variable names, they're currently trash
 func NewKademlia(ip string, port int) *Kademlia {
-	ch_network_input := make(chan msg)
-	ch_network_output := make(chan msg)
-	ch_node_lookup := make(chan []Contact)
-	ch_node_response := make(chan []Contact)
+	channelServerInput := make(chan msg)
+	channelServerOutput := make(chan msg)
+	channelNodeLookup := make(chan []Contact)
 	addrs := ip + ":" + strconv.Itoa(port)
-	outRequest := NewSharedMap()
+	outgoingRequests := NewSharedMap()
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
-	server := NewNetwork(selfContact, addrs, outRequest, ch_network_input, ch_network_output)
+	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
-	kademlia_node := Kademlia{server, outRequest, ch_network_input, ch_network_output, ch_node_lookup, ch_node_response, routingTable, datastore}
-	return &kademlia_node
+	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
+	return &kademliaNode
 }
 
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
@@ -69,57 +67,57 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 
 func (node *Kademlia) NodeLookup(target *KademliaID) {
 	// Initiate candidates.
-	current_candidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
+	currentCandidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
 
 	// Inititate end condition.
-	current_closest_node := current_candidates.GetClosest()
-	probed_no_closer := 0
+	currentClosestNode := currentCandidates.GetClosest()
+	probedNoCloser := 0
 
-	consumed_candidates := make(map[*KademliaID]int)
+	consumedCandidates := make(map[*KademliaID]int)
 
 	// For keeping track off active outgoing FindNode RPCs.
-	active_calls := 0
+	activeAlphaCalls := 0
 
-	var temp_new_candidates []Contact
-	for probed_no_closer < BucketSize {
-		if current_closest_node.ID.Equals(target) {
+	var newCandidates []Contact
+	for probedNoCloser < BucketSize {
+		if currentClosestNode.ID.Equals(target) {
 			return
 		}
-		for active_calls < ALPHA_VALUE && current_candidates.Len() > 0 {
-			temp_contact := current_candidates.PopClosest()
+		for activeAlphaCalls < ALPHA_VALUE && currentCandidates.Len() > 0 {
+			tempContact := currentCandidates.PopClosest()
 			// Check for alrdy consumed nodes.
-			if consumed_candidates[temp_contact.ID] == 1 {
+			if consumedCandidates[tempContact.ID] == 1 {
 				// Already consumed contact - dead end.
-				active_calls--
+				activeAlphaCalls--
 			} else {
-				consumed_candidates[temp_contact.ID] = 1
-				node.server.SendFindContactMessage(&temp_contact, *target)
+				consumedCandidates[tempContact.ID] = 1
+				node.server.SendFindContactMessage(&tempContact, *target)
 			}
-			active_calls++
+			activeAlphaCalls++
 		}
-		if !node.outRequest.expectingIncRequest() {
+		if !node.outgoingRequests.expectingIncRequest() {
 			// Not expecting any response - entered loop with only consumed candidates in current candidates - return to avoid block.
 			return
 		}
 
-		temp_new_candidates = <-node.ch_node_lookup
+		newCandidates = <-node.channelNodeLookup
 		// Investigate to why I have to recalculate the distances?
-		for i := 0; i < len(temp_new_candidates); i++ {
-			temp_new_candidates[i].CalcDistance(target)
-			go node.server.SendPingMessage(&(temp_new_candidates[i]), "PING")
+		for i := 0; i < len(newCandidates); i++ {
+			newCandidates[i].CalcDistance(target)
+			go node.server.SendPingMessage(&(newCandidates[i]), "PING")
 		}
 
 		// Only need to check head of list as list is ordered on arrival.
-		if !current_closest_node.Less(&temp_new_candidates[0]) {
+		if !currentClosestNode.Less(&newCandidates[0]) {
 			// Got closer to target, update current closest and succesfull probes.
-			probed_no_closer = 0
-			current_closest_node = temp_new_candidates[0]
+			probedNoCloser = 0
+			currentClosestNode = newCandidates[0]
 		} else {
 			// No closer to target.
-			probed_no_closer++
+			probedNoCloser++
 		}
-		current_candidates.Append(temp_new_candidates)
-		active_calls--
+		currentCandidates.Append(newCandidates)
+		activeAlphaCalls--
 	}
 }
 
@@ -137,7 +135,6 @@ func (node *Kademlia) Store(data *string) {
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
-	// NOTE table will be empty until find node candidates have returned ping request.
 	if bootLoaderAddrs == "" {
 		return
 	}
@@ -151,32 +148,32 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	for {
-		server_msg := <-node.ch_network_input
-		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", server_msg.Method.String(), server_msg.Caller.ID, server_msg.Caller.Address)
-		node.routingTable.AddContact(server_msg.Caller)
-		if server_msg.Caller.Address == node.routingTable.me.Address {
-			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", server_msg.Caller.ID)
+		serverMsg := <-node.channelServerInput
+		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", serverMsg.Method.String(), serverMsg.Caller.ID, serverMsg.Caller.Address)
+		node.routingTable.AddContact(serverMsg.Caller)
+		if serverMsg.Caller.Address == node.routingTable.me.Address {
+			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", serverMsg.Caller.ID)
 		} else {
-			switch server_msg.Method {
+			switch serverMsg.Method {
 			case Ping:
 				log.Println("PING")
-				if server_msg.Payload.PingPong == "PING" {
-					node.server.SendPingMessage(&server_msg.Caller, "PONG")
+				if serverMsg.Payload.PingPong == "PING" {
+					node.server.SendPingMessage(&serverMsg.Caller, "PONG")
 				}
 			case Store:
 				// TODO Handle inc store event.
 			case FindNode:
-				if server_msg.Payload.Candidates == nil {
-					node.ReturnCandidates(&server_msg.Caller, &server_msg.Payload.FindNode)
+				if serverMsg.Payload.Candidates == nil {
+					node.ReturnCandidates(&serverMsg.Caller, &serverMsg.Payload.FindNode)
 				} else {
-					node.outRequest.mutex.Lock()
-					if node.outRequest.outgoingRegister[*server_msg.Caller.ID] > 0 {
-						node.outRequest.outgoingRegister[*server_msg.Caller.ID] -= 1 // node.outRequest.outgoingRegister[*server_msg.Caller.ID] - 1
-						node.outRequest.mutex.Unlock()
-						node.ch_node_lookup <- server_msg.Payload.Candidates
+					node.outgoingRequests.mutex.Lock()
+					if node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] > 0 {
+						node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] -= 1
+						node.outgoingRequests.mutex.Unlock()
+						node.channelNodeLookup <- serverMsg.Payload.Candidates
 					} else {
-						log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", server_msg.Caller.ID)
-						node.outRequest.mutex.Unlock()
+						log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", serverMsg.Caller.ID)
+						node.outgoingRequests.mutex.Unlock()
 					}
 				}
 			case FindValue:
@@ -186,9 +183,6 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 			}
 
 		}
-
-		// Will add any incoming request caller to routingTable if possible.
-		// node.routingTable.AddContact(server_msg.Caller)
 	}
 
 }

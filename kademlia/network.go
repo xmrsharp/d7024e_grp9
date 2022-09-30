@@ -7,34 +7,34 @@ import (
 )
 
 type Network struct {
-	msgHeader  Contact
-	wg         sync.WaitGroup
-	outRequest *SharedMap
-	addrs      *net.UDPAddr
-	write_ch   chan<- msg
-	read_ch    <-chan msg
+	msgHeader        Contact
+	wg               sync.WaitGroup
+	outgoingRequests *SharedMap
+	addrs            *net.UDPAddr
+	channelWriteNode chan<- msg
+	channelReadNode  <-chan msg
 }
 
-func NewNetwork(msgHeader Contact, addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
-	udp_addr, err := net.ResolveUDPAddr("udp4", addrs)
+func NewNetwork(msgHeader Contact, addrs string, outgoingRequests *SharedMap, write chan<- msg, read <-chan msg) *Network {
+	udpAddr, err := net.ResolveUDPAddr("udp4", addrs)
 	if err != nil {
 		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
 	}
-	network := Network{msgHeader, sync.WaitGroup{}, outRequest, udp_addr, write, read}
+	network := Network{msgHeader, sync.WaitGroup{}, outgoingRequests, udpAddr, write, read}
 	return &network
 }
 
 func (network *Network) Listen() {
-	server_socket, err := net.ListenUDP("udp4", network.addrs)
+	serverSocket, err := net.ListenUDP("udp4", network.addrs)
 	if err != nil {
 		log.Println(err)
 	}
 	log.Println("SERVING ON:", network.addrs)
-	defer server_socket.Close()
+	defer serverSocket.Close()
 	for {
 		// Change size of reader.
 		buff := make([]byte, 4096, 4096)
-		n, caller_addr, err := server_socket.ReadFromUDP(buff)
+		n, caller_addr, err := serverSocket.ReadFromUDP(buff)
 		if err != nil {
 			log.Println("FAILED TO READ SOCKET:", err)
 		} else {
@@ -46,25 +46,25 @@ func (network *Network) Listen() {
 
 func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
 	defer network.wg.Done()
-	decode_msg, err := decodeMsg(m)
+	decodedMsg, err := decodeMsg(m)
 	if err != nil {
 		// Simply want to end routine nicely.
 		log.Println("UNKNOWN MSG BY:", addr)
 		return
 	}
-	network.write_ch <- decode_msg
+	network.channelWriteNode <- decodedMsg
 }
 
 // Add caller to awaiting result channel?
 // Here need to alter the dialup to simply call the addrs from contact.
 func (network *Network) sendRequest(m msg, to Contact) {
 	payload, _ := encodeMsg(m)
-	udp_addr, err := net.ResolveUDPAddr("udp4", to.Address)
+	udpAddr, err := net.ResolveUDPAddr("udp4", to.Address)
 	if err != nil {
 		// TODO Here alert node to remove contact from routing table
 		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
 	}
-	conn, err := net.DialUDP("udp4", nil, udp_addr)
+	conn, err := net.DialUDP("udp4", nil, udpAddr)
 	if err != nil {
 		// TODO Here alert node to remove contact from routing table
 		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
@@ -73,7 +73,7 @@ func (network *Network) sendRequest(m msg, to Contact) {
 	defer conn.Close()
 	if err != nil {
 		// TODO Here alert node to remove contact from routing table
-		log.Println("FAILED TO WRITE TO: ", udp_addr)
+		log.Println("FAILED TO WRITE TO: ", udpAddr)
 	} else {
 		log.Println("SENT REQ:", m.Method, " TO: ", to.Address)
 		conn.Close()
@@ -95,9 +95,9 @@ func (network *Network) respondFindContactMessage(to *Contact, candidates []Cont
 	m.Method = FindNode
 	m.Caller = network.msgHeader
 	m.Payload.Candidates = candidates
-	network.outRequest.mutex.Lock()
-	network.outRequest.outgoingRegister[*to.ID] += 1
-	network.outRequest.mutex.Unlock()
+	network.outgoingRequests.mutex.Lock()
+	network.outgoingRequests.outgoingRegister[*to.ID] += 1
+	network.outgoingRequests.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }
 func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
@@ -105,9 +105,9 @@ func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 	m.Method = FindNode
 	m.Caller = network.msgHeader
 	m.Payload.FindNode = target
-	network.outRequest.mutex.Lock()
-	network.outRequest.outgoingRegister[*to.ID] += 1
-	network.outRequest.mutex.Unlock()
+	network.outgoingRequests.mutex.Lock()
+	network.outgoingRequests.outgoingRegister[*to.ID] += 1
+	network.outgoingRequests.mutex.Unlock()
 	network.sendRequest(*m, *to)
 }
 

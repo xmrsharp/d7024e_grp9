@@ -6,24 +6,19 @@ import (
 	"log"
 )
 
-// TODO Refactor name from msg -> packet (application layer messages called packets...)
-// NOTE encoding/gob requires struct fields to be exported.
 type msg struct {
-	Method  rpc_method
+	Method  RPCMethod
 	Caller  Contact // Will need an address of where to respond to as each instance is only keeping an open port.
 	Payload content
 }
 
-// Simply have candidates or the respective value. eeez.
-//Basically just need method and candidates, or key,value, or contact. (single contact).
-
 type content struct {
-	PingPong   string     //Simply calling it for face value, ping pong.
-	Key        [160]byte  // FindValue: Find value.
-	Value      [160]byte  // Payload for findvalue
+	PingPong   string     // Simply calling it for face value, ping pong.
+	Key        [160]byte  // FindValue: key.
+	Value      [160]byte  // FindValue: value.
 	Store      Tuple      // Store: Key, Value
 	Candidates []Contact  // Store/FindNode/FindValue candidates if not found.
-	FindNode   KademliaID // Caller Key(kademlia ID) -> return (IP, Node ID) tuple for eahc of the k nodes closets to the target id.
+	FindNode   KademliaID // FindNode: Target
 }
 
 type Tuple struct {
@@ -31,10 +26,9 @@ type Tuple struct {
 	Value KademliaID
 }
 
-// Careful with this 'enumeration' method, simple integers will work aswell.
-type rpc_method int
+type RPCMethod int
 
-func (r rpc_method) String() string {
+func (r RPCMethod) String() string {
 	switch r {
 	case 0:
 		return "PING"
@@ -51,16 +45,11 @@ func (r rpc_method) String() string {
 }
 
 const (
-	Ping rpc_method = iota
+	Ping RPCMethod = iota
 	Store
 	FindNode
 	FindValue
 )
-
-// Uncesseary function.
-//func CreateMsg(self Contact, method rpc_method, payload content) msg {
-//	return msg{self, method, payload}
-//}
 
 func encodeMsg(m msg) ([]byte, error) {
 	var buf bytes.Buffer

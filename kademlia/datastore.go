@@ -10,9 +10,9 @@ func NewDataStore() DataStore {
 	return DataStore{make(KademliaMap)}
 }
 
-func (data *DataStore) Insert(val string) {
-	id := NewKademliaID(&val)
-	data.data[id] = val
+func (data *DataStore) Insert(val *string) {
+	id := NewKademliaID(val)
+	data.data[id] = *val
 }
 
 func (data *DataStore) Get(key KademliaID) string {
