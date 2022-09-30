@@ -1,7 +1,6 @@
 package d7024e
 
 import (
-	"D7024E_GRP9/kademlia/datastore"
 	"fmt"
 	"log"
 	"strconv"
@@ -27,7 +26,7 @@ type Kademlia struct {
 	ch_node_lookup    chan []Contact
 	ch_node_response  chan []Contact
 	routingTable      *RoutingTable
-	datastore         datastore.DataStore
+	datastore         DataStore
 }
 
 // TODO Go over variable names, they're currently trash
@@ -41,7 +40,7 @@ func NewKademlia(ip string, port int) *Kademlia {
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
 	server := InitNetwork(selfContact, addrs, outRequest, ch_network_input, ch_network_output)
 	routingTable := NewRoutingTable(selfContact)
-	datastore := datastore.New()
+	datastore := NewDataStore()
 	kademlia_node := Kademlia{server, outRequest, ch_network_input, ch_network_output, ch_node_lookup, ch_node_response, routingTable, datastore}
 	return &kademlia_node
 }
