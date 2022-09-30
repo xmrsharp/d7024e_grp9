@@ -34,6 +34,22 @@ type Tuple struct {
 // Careful with this 'enumeration' method, simple integers will work aswell.
 type rpc_method int
 
+func (r rpc_method) String() string {
+	switch r {
+	case 0:
+		return "PING"
+	case 1:
+		return "STORE"
+	case 2:
+		return "FIND_NODE"
+	case 3:
+		return "FIND_VALUE"
+	default:
+		return "UNKNOWN"
+	}
+
+}
+
 const (
 	Ping rpc_method = iota
 	Store

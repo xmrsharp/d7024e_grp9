@@ -15,7 +15,7 @@ type Network struct {
 	read_ch    <-chan msg
 }
 
-func InitNetwork(msgHeader Contact, addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
+func NewNetwork(msgHeader Contact, addrs string, outRequest *SharedMap, write chan<- msg, read <-chan msg) *Network {
 	udp_addr, err := net.ResolveUDPAddr("udp4", addrs)
 	if err != nil {
 		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
@@ -52,7 +52,6 @@ func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
 		log.Println("UNKNOWN MSG BY:", addr)
 		return
 	}
-	log.Println("HANDLE REQUEST - RECIEVED: ", decode_msg.Method, " REQUEST FROM: ", addr)
 	network.write_ch <- decode_msg
 }
 
@@ -60,7 +59,6 @@ func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
 // Here need to alter the dialup to simply call the addrs from contact.
 func (network *Network) sendRequest(m msg, to Contact) {
 	payload, _ := encodeMsg(m)
-	log.Println("ADDRESS:", to.Address)
 	udp_addr, err := net.ResolveUDPAddr("udp4", to.Address)
 	if err != nil {
 		// TODO Here alert node to remove contact from routing table
@@ -77,7 +75,7 @@ func (network *Network) sendRequest(m msg, to Contact) {
 		// TODO Here alert node to remove contact from routing table
 		log.Println("FAILED TO WRITE TO: ", udp_addr)
 	} else {
-		log.Println("SENT REQ: ", m.Method, " TO: ", to.Address)
+		log.Println("SENT REQ:", m.Method, " TO: ", to.Address)
 		conn.Close()
 	}
 

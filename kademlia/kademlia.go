@@ -22,13 +22,14 @@ func NewSharedMap() *SharedMap {
 }
 
 func (sm *SharedMap) expectingIncRequest() bool {
-	sm.mutex.Lock
-	for k, v := range sm.outgoingRegister {
-		if v > 1 {
-			log.Println("--> Expecting response from:", k)
+	sm.mutex.Lock()
+	for _, v := range sm.outgoingRegister {
+		if v > 0 {
+			sm.mutex.Unlock()
 			return true
 		}
 	}
+	sm.mutex.Unlock()
 	return false
 
 }
@@ -54,7 +55,7 @@ func NewKademlia(ip string, port int) *Kademlia {
 	addrs := ip + ":" + strconv.Itoa(port)
 	outRequest := NewSharedMap()
 	selfContact := NewContact(NewRandomKademliaID(), addrs)
-	server := InitNetwork(selfContact, addrs, outRequest, ch_network_input, ch_network_output)
+	server := NewNetwork(selfContact, addrs, outRequest, ch_network_input, ch_network_output)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
 	kademlia_node := Kademlia{server, outRequest, ch_network_input, ch_network_output, ch_node_lookup, ch_node_response, routingTable, datastore}
@@ -66,8 +67,8 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 	node.server.respondFindContactMessage(caller, candidates)
 }
 
-func (node *Kademlia) NodeLookup(target *KademliaID) Contact {
-	// Initiate candidates from own routing table.
+func (node *Kademlia) NodeLookup(target *KademliaID) {
+	// Initiate candidates.
 	current_candidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
 
 	// Inititate end condition.
@@ -76,19 +77,17 @@ func (node *Kademlia) NodeLookup(target *KademliaID) Contact {
 
 	consumed_candidates := make(map[*KademliaID]int)
 
-	// For keeping track off outgoing FindNode RPCs.
+	// For keeping track off active outgoing FindNode RPCs.
 	active_calls := 0
 
 	var temp_new_candidates []Contact
-
-	for probed_no_closer < BucketSize && node.outRequest.expectingIncRequest() {
-		log.Println("START OF OUTER LOOP")
+	for probed_no_closer < BucketSize {
 		if current_closest_node.ID.Equals(target) {
-			return // node.routingTable.FindClosestContacts(target, BucketSize)
+			return
 		}
 		for active_calls < ALPHA_VALUE && current_candidates.Len() > 0 {
 			temp_contact := current_candidates.PopClosest()
-			// Check for alrdy consumed nodes
+			// Check for alrdy consumed nodes.
 			if consumed_candidates[temp_contact.ID] == 1 {
 				// Already consumed contact - dead end.
 				active_calls--
@@ -98,12 +97,16 @@ func (node *Kademlia) NodeLookup(target *KademliaID) Contact {
 			}
 			active_calls++
 		}
-		// Increase the number of visited nodes w/o finding closer contact.
+		if !node.outRequest.expectingIncRequest() {
+			// Not expecting any response - entered loop with only consumed candidates in current candidates - return to avoid block.
+			return
+		}
+
 		temp_new_candidates = <-node.ch_node_lookup
 		// Investigate to why I have to recalculate the distances?
 		for i := 0; i < len(temp_new_candidates); i++ {
 			temp_new_candidates[i].CalcDistance(target)
-			go node.server.SendPingMessage(temp_new_candidates[i], "PING")
+			go node.server.SendPingMessage(&(temp_new_candidates[i]), "PING")
 		}
 
 		// Only need to check head of list as list is ordered on arrival.
@@ -116,15 +119,8 @@ func (node *Kademlia) NodeLookup(target *KademliaID) Contact {
 			probed_no_closer++
 		}
 		current_candidates.Append(temp_new_candidates)
-		// TODO REMOVE: ONLY FOR TESTING PURPOSES
-		//for i := 0; i < current_candidates.Len(); i++ {
-		//	log.Println(current_candidates.contacts[i].distance)
-		//	log.Println("CANDIDATE", i, ": ", current_candidates.contacts[i].String())
-		//}
-
 		active_calls--
 	}
-	// return node.routingTable.FindClosestContacts(target, BucketSize)
 }
 
 func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Contact {
@@ -137,18 +133,17 @@ func (node *Kademlia) LookupData(hash string) {
 }
 
 func (node *Kademlia) Store(data *string) {
-	node.datastore.Insert(*data)
+	node.datastore.Insert(data)
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
+	// NOTE table will be empty until find node candidates have returned ping request.
 	if bootLoaderAddrs == "" {
 		return
 	}
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
-	// Run node lookup to populate routing table.
 	node.NodeLookup(node.routingTable.me.ID)
-	log.Println("Closest neighbours:", node.routingTable.FindClosestContacts(node.routingTable.me.ID, BucketSize))
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
@@ -157,24 +152,21 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	for {
 		server_msg := <-node.ch_network_input
-		log.Println("MAIN LOOP RECIEVED: ", server_msg.Caller, "FROM CH")
+		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", server_msg.Method.String(), server_msg.Caller.ID, server_msg.Caller.Address)
+		node.routingTable.AddContact(server_msg.Caller)
 		if server_msg.Caller.Address == node.routingTable.me.Address {
-			log.Println("SUSPECT CALLER: IDENTICAL ADDRS OFF:", node.routingTable.me.Address)
+			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", server_msg.Caller.ID)
 		} else {
 			switch server_msg.Method {
 			case Ping:
+				log.Println("PING")
 				if server_msg.Payload.PingPong == "PING" {
-					log.Println("RECIEVED PING EVENT")
 					node.server.SendPingMessage(&server_msg.Caller, "PONG")
-				} else {
-					log.Println("RECIEVED PONG EVENT")
 				}
 			case Store:
-				log.Println("RECIEVED STORE EVENT")
+				// TODO Handle inc store event.
 			case FindNode:
-				log.Println("RECIEVED FINDNODE EVENT")
 				if server_msg.Payload.Candidates == nil {
-					// Inc request, so simply return candidates.
 					node.ReturnCandidates(&server_msg.Caller, &server_msg.Payload.FindNode)
 				} else {
 					node.outRequest.mutex.Lock()
@@ -183,19 +175,20 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 						node.outRequest.mutex.Unlock()
 						node.ch_node_lookup <- server_msg.Payload.Candidates
 					} else {
-						// Possible malicious request.
+						log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", server_msg.Caller.ID)
 						node.outRequest.mutex.Unlock()
 					}
 				}
 			case FindValue:
-				log.Println("RECIEVED FINDVALUE EVENT")
+				// TODO Handle inc find value event.
 			default:
-				log.Println("RECIEVED OTHER EVENT")
+				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}
 
 		}
+
 		// Will add any incoming request caller to routingTable if possible.
-		node.routingTable.AddContact(server_msg.Caller)
+		// node.routingTable.AddContact(server_msg.Caller)
 	}
 
 }
