@@ -23,7 +23,7 @@ type content struct {
 
 type Tuple struct {
 	Key   KademliaID
-	Value KademliaID
+	Value []byte
 }
 
 type RPCMethod int

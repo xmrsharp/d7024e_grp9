@@ -1,14 +1,18 @@
 package d7024e
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
 	ALPHA_VALUE = 3
+	K_VALUE     = 20
 )
 
 // SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
@@ -130,8 +134,44 @@ func (node *Kademlia) LookupData(hash string) {
 	// TODO
 }
 
-func (node *Kademlia) Store(data *string) {
-	node.datastore.Insert(data)
+/*
+Create new random ID
+Update routing table for the new id
+Get closest contacts for id and try sending store message to them
+*/
+
+func (node *Kademlia) Store(data []byte, status chan bool) {
+	log.Println("Store command in kademlia.go called with data:")
+	log.Println(data)
+	hashed := Hash(data)
+	//str2B := []byte(hashed)
+	key := NewKademliaID(&hashed)
+
+	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
+	log.Println("Trying to store key: " + key.String())
+	node.NodeLookup(&key)
+	//Array with contacs
+	neighbours := node.FindClosestContacts(&key, K_VALUE)
+	//Loop through closest contacts and try storing on them.
+	for i := 0; i < len(neighbours); i++ {
+		storeStatus := make(chan bool)
+		go node.server.SendStoreMessage(&(neighbours[i]), key, data, storeStatus)
+		select {
+		case <-storeStatus:
+			log.Println("Stored data on node: " + (neighbours[i]).ID.String())
+		case <-time.After(10 * time.Second):
+			log.Println("TOOK TOO LONG TIME!!")
+		}
+	}
+	status <- true
+
+}
+
+func Hash(data []byte) string {
+	sha1 := sha1.Sum([]byte(data))
+	key := hex.EncodeToString(sha1[:])
+
+	return key
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
@@ -140,7 +180,7 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 	}
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
-	node.NodeLookup(node.routingTable.me.ID)
+
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
