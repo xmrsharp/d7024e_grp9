@@ -1,12 +1,12 @@
 version: "3"
 services:
   kademlia_nodes:
-    image: kademlia_node:1.1
+    image: kademlia_node:1.0
     stdin_open: true
     tty: true
     deploy:
       mode: replicated
-      replicas: 2
+      replicas: 50
       restart_policy:
         condition: on-failure
         delay: 5s
@@ -20,5 +20,5 @@ networks:
     name: kademlia_network
     ipam:
       config:
-        - subnet: 172.19.0.0/16
-          gateway: 172.19.0.1
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1

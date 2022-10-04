@@ -56,7 +56,7 @@ func encodeMsg(m msg) ([]byte, error) {
 	enc := gob.NewEncoder(&buf)
 	err := enc.Encode(m)
 	if err != nil {
-		log.Panic("COULD NOT ENCODE MSG:", m, err)
+		log.Printf(("COULD NOT ENCODE MSG: [%s] - %s"), m, err)
 		return nil, nil
 	}
 	msg_buf := make([]byte, 2048)
@@ -70,7 +70,7 @@ func decodeMsg(inp []byte) (m msg, e error) {
 	var inc msg
 	err := dec.Decode(&inc)
 	if err != nil {
-		log.Println("COULD NOT DECODE INC MSG:", inp, err)
+		log.Printf(("COULD NOT DECODE MSG: [%s] - %s"), inp, err)
 		return inc, err
 	}
 	return inc, nil

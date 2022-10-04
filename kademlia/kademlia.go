@@ -45,14 +45,13 @@ type Kademlia struct {
 	datastore           DataStore
 }
 
-// TODO Go over variable names, they're currently trash
-func NewKademlia(ip string, port int) *Kademlia {
+func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
 	addrs := ip + ":" + strconv.Itoa(port)
 	outgoingRequests := NewSharedMap()
-	selfContact := NewContact(NewRandomKademliaID(), addrs)
+	selfContact := NewContact(id, addrs)
 	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
@@ -96,15 +95,13 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 			activeAlphaCalls++
 		}
 		if !node.outgoingRequests.expectingIncRequest() {
-			// Not expecting any response - entered loop with only consumed candidates in current candidates - return to avoid block.
 			return
 		}
-
 		newCandidates = <-node.channelNodeLookup
 		// Investigate to why I have to recalculate the distances?
 		for i := 0; i < len(newCandidates); i++ {
 			newCandidates[i].CalcDistance(target)
-			go node.server.SendPingMessage(&(newCandidates[i]), "PING")
+			node.server.SendPingMessage(&(newCandidates[i]))
 		}
 
 		// Only need to check head of list as list is ordered on arrival.
@@ -144,30 +141,30 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
-	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	for {
 		serverMsg := <-node.channelServerInput
-		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", serverMsg.Method.String(), serverMsg.Caller.ID, serverMsg.Caller.Address)
 		node.routingTable.AddContact(serverMsg.Caller)
+		log.Printf(("RECIEVED [%s] EVENT FROM [%s]:[%s]"), serverMsg.Method.String(), serverMsg.Caller.Address, serverMsg.Caller.ID)
 		if serverMsg.Caller.Address == node.routingTable.me.Address {
 			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", serverMsg.Caller.ID)
 		} else {
 			switch serverMsg.Method {
 			case Ping:
-				log.Println("PING")
 				if serverMsg.Payload.PingPong == "PING" {
-					node.server.SendPingMessage(&serverMsg.Caller, "PONG")
+					node.server.SendPongMessage(&serverMsg.Caller)
 				}
 			case Store:
 				// TODO Handle inc store event.
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
+					node.routingTable.AddContact(serverMsg.Caller)
 					node.ReturnCandidates(&serverMsg.Caller, &serverMsg.Payload.FindNode)
 				} else {
 					node.outgoingRequests.mutex.Lock()
 					if node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] > 0 {
+						node.routingTable.AddContact(serverMsg.Caller)
 						node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] -= 1
 						node.outgoingRequests.mutex.Unlock()
 						node.channelNodeLookup <- serverMsg.Payload.Candidates
@@ -184,17 +181,19 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 
 		}
 	}
-
 }
 
-// TODO REMOVE: USED FOR TESTING PURPOSES ONLY
+// NOTE ONLY TO BE USED FOR TESTING/DEMONSTRATION PURPOSES ONLY
 func (node *Kademlia) genCheckBuckets() {
+	count := 0
 	for i := 0; i < 20; i++ {
-		num_entries := node.routingTable.buckets[i].Len()
-		fmt.Println("BUCKET:", i, " Contains ", num_entries, " number of entries.")
+		//num_entries := node.routingTable.buckets[i].Len()
+		// fmt.Println("BUCKET:", i, " Contains ", num_entries, " number of entries.")
 		for j := node.routingTable.buckets[i].list.Front(); j != nil; j = j.Next() {
-			fmt.Println("V:", j.Value)
+			// NOTE If individual number of entries are to be inspected.
+			//fmt.Println("V:", j.Value)
+			count++
 		}
 	}
-
+	fmt.Println("TOTAL NUMBER OF UNIQUE ENTRIES : ", count)
 }

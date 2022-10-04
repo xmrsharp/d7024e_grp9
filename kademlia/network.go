@@ -16,16 +16,16 @@ type Network struct {
 }
 
 func NewNetwork(msgHeader Contact, addrs string, outgoingRequests *SharedMap, write chan<- msg, read <-chan msg) *Network {
-	udpAddr, err := net.ResolveUDPAddr("udp4", addrs)
+	udpAddr, err := net.ResolveUDPAddr("udp", addrs)
 	if err != nil {
-		log.Panic("CANNOT SERVE ON SPECIFIED ADDR")
+		log.Panicf(("CANNOT SERVE ON SPEC ADDR - %s"), err)
 	}
 	network := Network{msgHeader, sync.WaitGroup{}, outgoingRequests, udpAddr, write, read}
 	return &network
 }
 
 func (network *Network) Listen() {
-	serverSocket, err := net.ListenUDP("udp4", network.addrs)
+	serverSocket, err := net.ListenUDP("udp", network.addrs)
 	if err != nil {
 		log.Println(err)
 	}
@@ -33,7 +33,7 @@ func (network *Network) Listen() {
 	defer serverSocket.Close()
 	for {
 		// Change size of reader.
-		buff := make([]byte, 4096, 4096)
+		buff := make([]byte, 8192)
 		n, caller_addr, err := serverSocket.ReadFromUDP(buff)
 		if err != nil {
 			log.Println("FAILED TO READ SOCKET:", err)
@@ -58,35 +58,40 @@ func (network *Network) handleRequest(m []byte, addr *net.UDPAddr) {
 // Add caller to awaiting result channel?
 // Here need to alter the dialup to simply call the addrs from contact.
 func (network *Network) sendRequest(m msg, to Contact) {
-	payload, _ := encodeMsg(m)
-	udpAddr, err := net.ResolveUDPAddr("udp4", to.Address)
+	log.Printf(("SENDING [%s] TO: [%s]"), m.Method, to.Address)
+	payload, err := encodeMsg(m)
 	if err != nil {
-		// TODO Here alert node to remove contact from routing table
-		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
+		log.Printf(("ENCODING ERROR: %s"), err)
 	}
-	conn, err := net.DialUDP("udp4", nil, udpAddr)
+	udpAddr, err := net.ResolveUDPAddr("udp", to.Address)
 	if err != nil {
+		log.Printf(("RESOLVE ADDR ERR TO [%s] - %s"), to.Address, err)
 		// TODO Here alert node to remove contact from routing table
-		log.Println("FAILED TO ESTABLISH CONNECTION TO: ", to)
 	}
-	_, err = conn.Write(payload)
+	conn, err := net.DialUDP("udp", nil, udpAddr)
 	defer conn.Close()
 	if err != nil {
 		// TODO Here alert node to remove contact from routing table
-		log.Println("FAILED TO WRITE TO: ", udpAddr)
-	} else {
-		log.Println("SENT REQ:", m.Method, " TO: ", to.Address)
-		conn.Close()
+		log.Printf(("FAILED TO ESTABLISH SOCKET TO [%s] - %s"), to.Address, err)
 	}
-
+	_, err = conn.Write(payload)
+	if err != nil {
+		log.Printf(("FAILED TO WRITE - %s"), err)
+	}
 }
 
-// TODO Refactor: awkward having to append self to every packet payload.
-func (network *Network) SendPingMessage(to *Contact, pingMsg string) {
+func (network *Network) SendPongMessage(to *Contact) {
 	m := new(msg)
 	m.Method = Ping
 	m.Caller = network.msgHeader
-	m.Payload.PingPong = pingMsg
+	m.Payload.PingPong = "PONG"
+	network.sendRequest(*m, *to)
+}
+func (network *Network) SendPingMessage(to *Contact) {
+	m := new(msg)
+	m.Method = Ping
+	m.Caller = network.msgHeader
+	m.Payload.PingPong = "PING"
 	network.sendRequest(*m, *to)
 }
 
