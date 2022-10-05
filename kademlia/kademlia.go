@@ -11,25 +11,25 @@ const (
 	ALPHA_VALUE = 3
 )
 
-// SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
-type SharedMap struct {
+// OutgoingRegister used by Kademlia and network to synchronize expected incoming responses by other nodes.
+type OutgoingRegister struct {
 	mutex            *sync.Mutex
 	outgoingRegister map[KademliaID]int
 }
 
-func NewSharedMap() *SharedMap {
-	return &SharedMap{&sync.Mutex{}, make(map[KademliaID]int)}
+func NewOutgoingRegister() *OutgoingRegister {
+	return &OutgoingRegister{&sync.Mutex{}, make(map[KademliaID]int)}
 }
 
-func (sm *SharedMap) expectingIncRequest() bool {
-	sm.mutex.Lock()
-	for _, v := range sm.outgoingRegister {
+func (reg *OutgoingRegister) expectingIncRequest() bool {
+	reg.mutex.Lock()
+	for _, v := range reg.outgoingRegister {
 		if v > 0 {
-			sm.mutex.Unlock()
+			reg.mutex.Unlock()
 			return true
 		}
 	}
-	sm.mutex.Unlock()
+	reg.mutex.Unlock()
 	return false
 
 }
@@ -37,7 +37,7 @@ func (sm *SharedMap) expectingIncRequest() bool {
 // Logic and state of Kademlia node
 type Kademlia struct {
 	server              *Network
-	outgoingRequests    *SharedMap
+	outgoingRequests    *OutgoingRegister
 	channelServerInput  <-chan msg
 	channelServerOutput chan<- msg
 	channelNodeLookup   chan []Contact
@@ -50,7 +50,7 @@ func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
 	addrs := ip + ":" + strconv.Itoa(port)
-	outgoingRequests := NewSharedMap()
+	outgoingRequests := NewOutgoingRegister()
 	selfContact := NewContact(id, addrs)
 	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
@@ -156,6 +156,12 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 					node.server.SendPongMessage(&serverMsg.Caller)
 				}
 			case Store:
+				// serverMsg.Payload.Method == store
+				// serverMsg.Payload.Key
+				// serverMsg.payload.value
+				// node.Datastore.save(key,value)
+				//
+
 				// TODO Handle inc store event.
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
@@ -175,6 +181,9 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				}
 			case FindValue:
 				// TODO Handle inc find value event.
+				// key = msg.Payload.Key
+				// res = node.DataStoreTable.get(key)
+				// return res
 			default:
 				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}
