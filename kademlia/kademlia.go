@@ -130,6 +130,13 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Conta
 	return node.routingTable.FindClosestContacts(target, count)
 }
 
+/*
+ 	Check that the hash is valid
+ 	Check if the data is found on this node
+	Send request to look for the data on other nodes
+		NodeLookup (key = target)
+		Send request to all contacts found in the lookup.
+*/
 func (node *Kademlia) LookupData(hash string) {
 	// TODO
 }
@@ -201,7 +208,10 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 					node.server.SendPingMessage(&serverMsg.Caller, "PONG")
 				}
 			case Store:
-				// TODO Handle inc store event.
+				// serverMsg.Payload.Method == store
+				// serverMsg.Payload.Key
+				// serverMsg.payload.value
+				// node.Datastore.save(key,value)
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
 					node.ReturnCandidates(&serverMsg.Caller, &serverMsg.Payload.FindNode)
@@ -218,6 +228,9 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				}
 			case FindValue:
 				// TODO Handle inc find value event.
+				// key = msg.Payload.Key
+				// res = node.DataStoreTable.get(key)
+				// return res
 			default:
 				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}

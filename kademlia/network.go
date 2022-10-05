@@ -112,9 +112,15 @@ func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 }
 
 // Return wrapper of contact lists or data.
-// func (network *Network) SendFindDataMessage(hash string) {
-// 	//TODO
-// }
+func (network *Network) SendFindDataMessage(hash string) {
+	m := new(msg)
+	m.Method = FindValue
+	m.Caller = network.msgHeader
+	network.outgoingRequests.mutex.Lock()
+	network.outgoingRequests.outgoingRegister[*to.ID] += 1
+	network.outgoingRequests.mutex.Unlock()
+	network.sendRequest(*m, *to)
+}
 
 //Return nothing as we're simply passing data to others to handle
 func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data []byte, status chan bool) {
