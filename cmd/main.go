@@ -1,10 +1,9 @@
 package main
 
 import (
-	d7024e "D7024E_GRP9/kademlia"
+	"D7024E_GRP9/api"
 	"log"
 	"net"
-	"strconv"
 )
 
 // NOTE Assuming no other hosts currently on 172.20.0.0/16 network.
@@ -27,13 +26,15 @@ func GetOutboundIP() net.IP {
 }
 
 func main() {
-	nodeIp := GetOutboundIP()
-	BootLoaderId := d7024e.NewKademliaIDString(BOOT_LOADER_STRING)
-	if nodeIp.String() == BOOT_LOADER_IP {
-		node := d7024e.NewKademlia(nodeIp.String(), PORT, BootLoaderId)
-		node.Run("", *BootLoaderId)
-	} else {
-		node := d7024e.NewKademlia(nodeIp.String(), PORT, d7024e.NewRandomKademliaID())
-		node.Run(BOOT_LOADER_IP+":"+strconv.Itoa(PORT), *BootLoaderId)
-	}
+	//nodeIp := GetOutboundIP()
+	//BootLoaderId := d7024e.NewKademliaIDString(BOOT_LOADER_STRING)
+	test := api.NewServer("127.0.0.1", 9999)
+	test.Run()
+	// if nodeIp.String() == BOOT_LOADER_IP {
+	// 	node := d7024e.NewKademlia(nodeIp.String(), PORT, BootLoaderId)
+	// 	node.Run("", *BootLoaderId)
+	// } else {
+	// 	node := d7024e.NewKademlia(nodeIp.String(), PORT, d7024e.NewRandomKademliaID())
+	// 	node.Run(BOOT_LOADER_IP+":"+strconv.Itoa(PORT), *BootLoaderId)
+	// }
 }
