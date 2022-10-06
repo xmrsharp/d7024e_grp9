@@ -1,16 +1,18 @@
 package main
 
 import (
-	"D7024E_GRP9/api"
+	"D7024E_GRP9/kademlia"
 	"log"
 	"net"
+	"strconv"
 )
 
 // NOTE Assuming no other hosts currently on 172.20.0.0/16 network.
 const (
 	BOOT_LOADER_IP     = "172.20.0.2"
 	BOOT_LOADER_STRING = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	PORT               = 8888
+	PORT_KAD           = 8888
+	PORT_API           = 8889
 )
 
 // Stolen from Stackoverflow.
@@ -26,15 +28,15 @@ func GetOutboundIP() net.IP {
 }
 
 func main() {
-	//nodeIp := GetOutboundIP()
-	//BootLoaderId := d7024e.NewKademliaIDString(BOOT_LOADER_STRING)
-	test := api.NewServer("127.0.0.1", 9999)
-	test.Run()
-	// if nodeIp.String() == BOOT_LOADER_IP {
-	// 	node := d7024e.NewKademlia(nodeIp.String(), PORT, BootLoaderId)
-	// 	node.Run("", *BootLoaderId)
-	// } else {
-	// 	node := d7024e.NewKademlia(nodeIp.String(), PORT, d7024e.NewRandomKademliaID())
-	// 	node.Run(BOOT_LOADER_IP+":"+strconv.Itoa(PORT), *BootLoaderId)
-	// }
+	nodeIp := GetOutboundIP()
+	BootLoaderId := kademlia.NewKademliaIDString(BOOT_LOADER_STRING)
+	// 	test := api.NewServer("127.0.0.1", PORT_API)
+	// 	test.Run()
+	if nodeIp.String() == BOOT_LOADER_IP {
+		node := kademlia.NewKademlia(nodeIp.String(), PORT_KAD, PORT_API, BootLoaderId)
+		node.Run("", *BootLoaderId)
+	} else {
+		node := kademlia.NewKademlia(nodeIp.String(), PORT_KAD, PORT_API, kademlia.NewRandomKademliaID())
+		node.Run(BOOT_LOADER_IP+":"+strconv.Itoa(PORT_KAD), *BootLoaderId)
+	}
 }

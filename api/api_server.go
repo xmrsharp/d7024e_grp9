@@ -11,18 +11,19 @@ type APIServer struct {
 	server      *http.Server
 }
 
-func NewServer(addr string, port int) *APIServer {
+func NewServer(addr string, port int, ch chan string) *APIServer {
 	httpServer := http.Server{Addr: addr + ":" + strconv.Itoa(port)}
 	handler := http.NewServeMux()
 	httpServer.Handler = handler
 
 	// Have to create instance first
-	apiServer := APIServer{make(chan string), &httpServer}
+	apiServer := APIServer{ch, &httpServer}
 	handler.HandleFunc("/test1", apiServer.endPointTest1)
 	return &apiServer
 }
 
-func (as *APIServer) Run() {
+func (as *APIServer) Listen() {
+	log.Println("API SERVING ON :", as.server.Addr)
 	err := as.server.ListenAndServe()
 	if err != nil {
 		log.Println("COULDNT START API:", err)
@@ -43,4 +44,7 @@ func (as *APIServer) endPointTest1(w http.ResponseWriter, r *http.Request) {
 	//response := http.Response{}
 
 	w.Write([]byte("ENDPOINTTEST"))
+	as.channelNode <- "MESSAGE FROM API SERVER"
+	response := <-as.channelNode
+	log.Println("RECIEVED RESPONSE:", response)
 }
