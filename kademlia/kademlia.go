@@ -1,4 +1,4 @@
-package d7024e
+package kademlia
 
 import (
 	"fmt"
@@ -79,6 +79,7 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 
 	var newCandidates []Contact
 	for probedNoCloser < BucketSize {
+
 		if currentClosestNode.ID.Equals(target) {
 			return
 		}
@@ -156,12 +157,6 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 					node.server.SendPongMessage(&serverMsg.Caller)
 				}
 			case Store:
-				// serverMsg.Payload.Method == store
-				// serverMsg.Payload.Key
-				// serverMsg.payload.value
-				// node.Datastore.save(key,value)
-				//
-
 				// TODO Handle inc store event.
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
@@ -181,9 +176,6 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				}
 			case FindValue:
 				// TODO Handle inc find value event.
-				// key = msg.Payload.Key
-				// res = node.DataStoreTable.get(key)
-				// return res
 			default:
 				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}

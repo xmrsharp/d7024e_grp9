@@ -1,4 +1,4 @@
-package d7024e
+package kademlia
 
 import (
 	"D7024E_GRP9/kademlia/datastore"
