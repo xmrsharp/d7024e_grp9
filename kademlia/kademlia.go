@@ -137,17 +137,25 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Conta
 		NodeLookup (key = target)
 		Send request to all contacts found in the lookup.
 */
-func (node *Kademlia) LookupData(hash string) {
-	// TODO
+func (node *Kademlia) LookupData(hash KademliaID) [20]byte {
+	// skicka till alla noder  fan yolo
+	// mao node lookup sendfinddata till alla du hittat
+	node.server.SendFindDataMessage(blablabla)
+	//nu har vi skickat vänta p åsvaret fan
+	val = <-node.channelNodeLookup
+	return val
 }
 
+//send get value with KEY
+// val = lookupdata(key)
+//print val
 /*
 Create new random ID
 Update routing table for the new id
 Get closest contacts for id and try sending store message to them
 */
 
-func (node *Kademlia) Store(data []byte, status chan bool) {
+func (node *Kademlia) StoreValue(data []byte, status chan bool) {
 	log.Println("Store command in kademlia.go called with data:")
 	log.Println(data)
 	hashed := Hash(data)
@@ -194,6 +202,11 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
+	go func() {
+		time.sleep(2*time.Second)
+		another_node := node.routingTable.FindClosestContacts(NewRandomKademliaID(2))
+		node.server.SendStoreMessage(&another_node[0].ID)
+	}
 	for {
 		serverMsg := <-node.channelServerInput
 		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", serverMsg.Method.String(), serverMsg.Caller.ID, serverMsg.Caller.Address)
@@ -208,10 +221,9 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 					node.server.SendPingMessage(&serverMsg.Caller, "PONG")
 				}
 			case Store:
-				// serverMsg.Payload.Method == store
-				// serverMsg.Payload.Key
-				// serverMsg.payload.value
-				// node.Datastore.save(key,value)
+				key := serverMsg.Payload.Store.Key
+				value := serverMsg.Payload.Store.Value
+				node.datastore.Insert(key, value)
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
 					node.ReturnCandidates(&serverMsg.Caller, &serverMsg.Payload.FindNode)
@@ -231,6 +243,16 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				// key = msg.Payload.Key
 				// res = node.DataStoreTable.get(key)
 				// return res
+				if serverMsg.Payload.Key != nil && serverMsg.Payload.Value == nil {
+					//ngn vill hitta värdet
+					val := node.datastore.Get(serverMsg.Payload.Key)
+					key := serverMsg.Payload.Key
+					node.server.SendFindDataMessage(&serverMsg.Caller, key, val)
+				} else {
+					// svar från annan nod datastore att här är värdet
+					node.channelvaluelookup <- server.payload.value
+				}
+
 			default:
 				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}

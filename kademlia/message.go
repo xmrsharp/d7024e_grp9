@@ -14,8 +14,8 @@ type msg struct {
 
 type content struct {
 	PingPong   string     // Simply calling it for face value, ping pong.
-	Key        [160]byte  // FindValue: key.
-	Value      [160]byte  // FindValue: value.
+	Key        [20]byte   // FindValue: key.
+	Value      [20]byte   // FindValue: value.
 	Store      Tuple      // Store: Key, Value
 	Candidates []Contact  // Store/FindNode/FindValue candidates if not found.
 	FindNode   KademliaID // FindNode: Target
@@ -23,7 +23,7 @@ type content struct {
 
 type Tuple struct {
 	Key   KademliaID
-	Value []byte
+	Value [20]byte
 }
 
 type RPCMethod int

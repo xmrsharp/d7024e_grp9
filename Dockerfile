@@ -1,7 +1,18 @@
-FROM alpine:latest
-# Alpine as it is a very lightweight linux distro
-# Add the commands needed to put your compiled go binary in the container and
-# run it when the container starts.
-#
-# See https://docs.docker.com/engine/reference/builder/ for a reference of all
-# the commands you can use in this file.
+FROM golang:1.16-alpine
+
+WORKDIR /app_kademlia
+
+
+COPY go.mod ./
+COPY go.sum ./
+
+RUN go mod download
+
+ADD kademlia ./kademlia
+ADD cmd ./cmd
+
+RUN go build -o /bin/kademlia_node ./cmd/main.go
+
+EXPOSE 8888
+
+CMD ["/bin/kademlia_node"]
