@@ -5,35 +5,11 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"sync"
 )
 
 const (
 	ALPHA_VALUE = 3
 )
-
-// OutgoingRegister used by Kademlia and network to synchronize expected incoming responses by other nodes.
-type OutgoingRegister struct {
-	mutex            *sync.Mutex
-	outgoingRegister map[KademliaID]int
-}
-
-func NewOutgoingRegister() *OutgoingRegister {
-	return &OutgoingRegister{&sync.Mutex{}, make(map[KademliaID]int)}
-}
-
-func (reg *OutgoingRegister) expectingIncRequest() bool {
-	reg.mutex.Lock()
-	for _, v := range reg.outgoingRegister {
-		if v > 0 {
-			reg.mutex.Unlock()
-			return true
-		}
-	}
-	reg.mutex.Unlock()
-	return false
-
-}
 
 // Logic and state of Kademlia node
 type Kademlia struct {
@@ -168,9 +144,9 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 			node.ReturnCandidates(&kademliaServerMsg.Caller, &kademliaServerMsg.Payload.FindNode)
 		} else {
 			node.outgoingRequests.mutex.Lock()
-			if node.outgoingRequests.outgoingRegister[*kademliaServerMsg.Caller.ID] > 0 {
+			if node.outgoingRequests.register[*kademliaServerMsg.Caller.ID] > 0 {
 				node.routingTable.AddContact(kademliaServerMsg.Caller)
-				node.outgoingRequests.outgoingRegister[*kademliaServerMsg.Caller.ID] -= 1
+				node.outgoingRequests.register[*kademliaServerMsg.Caller.ID] -= 1
 				node.outgoingRequests.mutex.Unlock()
 				node.channelNodeLookup <- kademliaServerMsg.Payload.Candidates
 			} else {
