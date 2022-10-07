@@ -33,9 +33,9 @@ func Put(node Kademlia, input string) {
 }
 func Get(node Kademlia, hash string) {
 	value, id := node.LookupData(hash)
-	if id == nil {
-		fmt.Println("")
+	if id == "" {
+		fmt.Println("Couldn't find requested value")
 	} else {
-		fmt.Println("Value found: ", value)
+		fmt.Println("Value found: ", value, " in node: ", id)
 	}
 }
