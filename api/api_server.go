@@ -8,12 +8,21 @@ import (
 	"strings"
 )
 
+type APIChannel struct {
+	ApiResponseChannel chan string
+	ApiRequestMsg      string
+}
 type APIServer struct {
-	channelNode chan string
+	channelNode chan<- APIChannel
 	server      *http.Server
 }
 
-func NewServer(addr string, port int, ch chan string) *APIServer {
+// Communication with node:
+// Send APIChannelMSG trhough channelNode.
+// And await reply in the Channel of the APIChannel
+// That way we're lbocking on a specific channel.
+
+func NewServer(addr string, port int, ch chan APIChannel) *APIServer {
 	httpServer := http.Server{Addr: addr + ":" + strconv.Itoa(port)}
 	handler := http.NewServeMux()
 	httpServer.Handler = handler
@@ -52,8 +61,14 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 		log.Println("DID NOT RECIEVE POST")
 		return
 	}
-	as.channelNode <- "INCOMING POST REQUEST WITH BODY"
-	nodeResp := <-as.channelNode
+	nodeChannelMsg := APIChannel{ApiResponseChannel: make(chan string),
+		ApiRequestMsg: "INCOMING POST REQUEST WITH BODY"}
+
+	// Write msg to node.
+	as.channelNode <- nodeChannelMsg
+	// Await response in wrapped channel
+	nodeResp := <-nodeChannelMsg.ApiResponseChannel
+
 	log.Println("RECIEVED RESP:", nodeResp)
 	w.Header().Set("Content-Type", "application/json")
 	respBody := postObjectResponse{Location: "/objects/" + "THIS_IS_A_TEST_VALUE"}
@@ -72,8 +87,15 @@ func (as *APIServer) getObject(w http.ResponseWriter, r *http.Request) {
 	// That being said, do not try this at home
 	temp := strings.Split(r.URL.String(), "/")
 	hash := temp[2]
-	as.channelNode <- hash
-	nodeResp := <-as.channelNode
+
+	nodeChannelMsg := APIChannel{ApiResponseChannel: make(chan string),
+		ApiRequestMsg: "INCOMING GET REQUEST WITH HASH:" + hash}
+
+	// Write msg to node.
+	as.channelNode <- nodeChannelMsg
+	// Await response in wrapped channel
+	nodeResp := <-nodeChannelMsg.ApiResponseChannel
+
 	log.Println("RECIEVED RESP:", nodeResp)
 
 	w.Header().Set("Content-Type", "application/json")

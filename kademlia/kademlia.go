@@ -11,12 +11,13 @@ const (
 	ALPHA_VALUE = 3
 )
 
+// TODO go over all channels in play.
 // Logic and state of Kademlia node
 type Kademlia struct {
 	kademliaServer      *Network
 	apiServer           *api.APIServer
 	outgoingRequests    *OutgoingRegister
-	channelAPI          chan string
+	channelAPI          <-chan api.APIChannel
 	channelServerInput  <-chan msg
 	channelServerOutput chan<- msg
 	channelNodeLookup   chan []Contact
@@ -28,13 +29,15 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
-	channelAPI := make(chan string)
 	addrs := ip + ":" + strconv.Itoa(portKademlia)
 	outgoingRequests := NewOutgoingRegister()
 	selfContact := NewContact(id, addrs)
 	kademliaServer := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
-	apiServer := api.NewServer(ip, portAPI, channelAPI)
 	routingTable := NewRoutingTable(selfContact)
+
+	channelAPI := make(chan api.APIChannel)
+	apiServer := api.NewServer(ip, portAPI, channelAPI)
+
 	datastore := NewDataStore()
 
 	kademliaNode := Kademlia{kademliaServer, apiServer, outgoingRequests, channelAPI, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
@@ -136,7 +139,7 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 			node.kademliaServer.SendPongMessage(&kademliaServerMsg.Caller)
 		}
 	case FindNode:
-		// TODO EVALUATE IF REGISTER IS CORRECTLY IMPLEMENTED WITH COUNTERS.
+		// TODO Need to check that register is correctly incremented/decremented.
 		if kademliaServerMsg.Payload.Candidates == nil {
 			node.ReturnCandidates(&kademliaServerMsg.Caller, &kademliaServerMsg.Payload.FindNode)
 		} else {
@@ -160,11 +163,13 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.apiServer.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	for {
-		log.Println("STARTING AGAIN")
 		select {
-		case apiMsg := <-node.channelAPI:
-			log.Println("RECIEVED API REQUEST: ", apiMsg)
-			node.channelAPI <- "RESPONSE API"
+		case apiRequest := <-node.channelAPI:
+			// TODO When findNode, findValue is implemented update
+			log.Println("RECIEVED API REQUEST: ", apiRequest.ApiRequestMsg, "WHICH RESPONSE SHOULD BE DEPENDENT ON.")
+			response := "TEST_RESPONSE."
+			// Return msg to the wrapped channe - add go routine when other methods operational.
+			apiRequest.ApiResponseChannel <- response
 		case kademliaServerMsg := <-node.channelServerInput:
 			log.Println("RECIEVED KAD NODE REQUEST")
 			node.handleIncomingRPC(kademliaServerMsg)
