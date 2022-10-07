@@ -77,7 +77,7 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 			}
 			activeAlphaCalls++
 		}
-		if !node.outgoingRequests.expectingIncRequest() {
+		if !node.outgoingRequests.ExpectingAnyRequest() {
 			return
 		}
 		newCandidates = <-node.channelNodeLookup
@@ -125,37 +125,31 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 
 func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 	log.Printf(("RECIEVED [%s] EVENT FROM [%s]:[%s]"), kademliaServerMsg.Method.String(), kademliaServerMsg.Caller.Address, kademliaServerMsg.Caller.ID)
-	// Add caller to routing table.
-	node.routingTable.AddContact(kademliaServerMsg.Caller)
 	if kademliaServerMsg.Caller.Address == node.routingTable.me.Address {
 		log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", kademliaServerMsg.Caller.ID)
 		return
 	}
+	node.routingTable.AddContact(kademliaServerMsg.Caller)
 	switch kademliaServerMsg.Method {
 	case Ping:
 		if kademliaServerMsg.Payload.PingPong == "PING" {
 			node.kademliaServer.SendPongMessage(&kademliaServerMsg.Caller)
 		}
-	case Store:
-		// TODO Handle inc store event.
 	case FindNode:
+		// TODO EVALUATE IF REGISTER IS CORRECTLY IMPLEMENTED WITH COUNTERS.
 		if kademliaServerMsg.Payload.Candidates == nil {
-			node.routingTable.AddContact(kademliaServerMsg.Caller)
 			node.ReturnCandidates(&kademliaServerMsg.Caller, &kademliaServerMsg.Payload.FindNode)
 		} else {
-			node.outgoingRequests.mutex.Lock()
-			if node.outgoingRequests.register[*kademliaServerMsg.Caller.ID] > 0 {
-				node.routingTable.AddContact(kademliaServerMsg.Caller)
-				node.outgoingRequests.register[*kademliaServerMsg.Caller.ID] -= 1
-				node.outgoingRequests.mutex.Unlock()
+			if node.outgoingRequests.ExpectingRequest(*kademliaServerMsg.Caller.ID) {
 				node.channelNodeLookup <- kademliaServerMsg.Payload.Candidates
 			} else {
 				log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", kademliaServerMsg.Caller.ID)
-				node.outgoingRequests.mutex.Unlock()
 			}
 		}
 	case FindValue:
 		// TODO Handle inc find value event.
+	case Store:
+		// TODO Handle inc store event.
 	default:
 		log.Println("PANIC - UNKNOWN RPC METHOD")
 	}

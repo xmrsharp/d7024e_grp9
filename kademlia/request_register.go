@@ -31,7 +31,18 @@ func (reg *OutgoingRegister) RegisterIncoming(target KademliaID) {
 
 }
 
-func (reg *OutgoingRegister) expectingIncRequest() bool {
+func (reg *OutgoingRegister) ExpectingRequest(target KademliaID) bool {
+	reg.mutex.Lock()
+	defer reg.mutex.Unlock()
+	if reg.register[target] > 0 {
+		reg.register[target] -= 1
+		return true
+	}
+	return false
+
+}
+
+func (reg *OutgoingRegister) ExpectingAnyRequest() bool {
 	reg.mutex.Lock()
 	defer reg.mutex.Unlock()
 	for _, v := range reg.register {
