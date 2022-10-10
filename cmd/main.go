@@ -16,8 +16,6 @@ const (
 	PORT               = 8888
 )
 
-var out io.Writer = os.Stdout
-
 // Stolen from Stackoverflow.
 func GetOutboundIP() net.IP {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
