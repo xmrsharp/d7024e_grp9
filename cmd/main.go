@@ -2,10 +2,8 @@ package main
 
 import (
 	d7024e "D7024E_GRP9/kademlia"
-	"io"
 	"log"
 	"net"
-	"os"
 	"strconv"
 )
 
@@ -15,8 +13,6 @@ const (
 	BOOT_LOADER_STRING = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 	PORT               = 8888
 )
-
-var out io.Writer = os.Stdout
 
 // Stolen from Stackoverflow.
 func GetOutboundIP() net.IP {

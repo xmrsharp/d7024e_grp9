@@ -16,7 +16,7 @@ func Cli(output io.Writer, node *Kademlia) {
 	// con, err := net.Dial("udp", address)
 	//
 	fmt.Println("starting CLI")
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(in)
 	for {
 		input, _ := reader.ReadString('\n')
 		parseInput := strings.TrimSpace(input)
