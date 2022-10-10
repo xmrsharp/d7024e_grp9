@@ -47,20 +47,23 @@ type Kademlia struct {
 	channelNodeLookup   chan []Contact
 	routingTable        *RoutingTable
 	datastore           DataStore
+	channelDataStore    chan []byte
 }
 
 // TODO Go over variable names, they're currently trash
-func NewKademlia(ip string, port int) *Kademlia {
+
+func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
+	channelDataStore := make(chan []byte)
 	addrs := ip + ":" + strconv.Itoa(port)
 	outgoingRequests := NewSharedMap()
-	selfContact := NewContact(NewRandomKademliaID(), addrs)
+	selfContact := NewContact(id, addrs)
 	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
-	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
+	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore, channelDataStore}
 	return &kademliaNode
 }
 
@@ -137,12 +140,21 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Conta
 		NodeLookup (key = target)
 		Send request to all contacts found in the lookup.
 */
-func (node *Kademlia) LookupData(hash KademliaID) [20]byte {
+func (node *Kademlia) LookupData(key KademliaID) []byte {
+	log.Println("LookupData command in kademlia.go called with key:")
+	log.Println(key)
+	node.NodeLookup(&key)
+	var val []byte
+	//Array with contacs
+	neighbours := node.FindClosestContacts(&key, K_VALUE)
 	// skicka till alla noder  fan yolo
 	// mao node lookup sendfinddata till alla du hittat
-	node.server.SendFindDataMessage(blablabla)
+	for i := 0; i < len(neighbours); i++ {
+		go node.server.SendFindDataMessage(&(neighbours[i]), key)
+		log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+	}
 	//nu har vi skickat vänta p åsvaret fan
-	val = <-node.channelNodeLookup
+	val = <-node.channelDataStore
 	return val
 }
 
@@ -202,11 +214,11 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	log.Println("<<		STARTING NODE	>>")
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
-	go func() {
-		time.sleep(2*time.Second)
-		another_node := node.routingTable.FindClosestContacts(NewRandomKademliaID(2))
-		node.server.SendStoreMessage(&another_node[0].ID)
-	}
+	// go func() {
+	// 	time.Sleep(2 * time.Second)
+	// 	another_node := node.routingTable.FindClosestContacts(NewRandomKademliaID(), 2)
+	// 	node.server.SendStoreMessage(&another_node[0].ID)
+	// }()
 	for {
 		serverMsg := <-node.channelServerInput
 		log.Printf("RECIEVED %s EVENT FROM [%s]:%s", serverMsg.Method.String(), serverMsg.Caller.ID, serverMsg.Caller.Address)
@@ -243,14 +255,13 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				// key = msg.Payload.Key
 				// res = node.DataStoreTable.get(key)
 				// return res
-				if serverMsg.Payload.Key != nil && serverMsg.Payload.Value == nil {
+				if serverMsg.Payload.Value == nil {
 					//ngn vill hitta värdet
 					val := node.datastore.Get(serverMsg.Payload.Key)
-					key := serverMsg.Payload.Key
-					node.server.SendFindDataMessage(&serverMsg.Caller, key, val)
+					node.server.SendReturnDataMessage(&serverMsg.Caller, val)
 				} else {
 					// svar från annan nod datastore att här är värdet
-					node.channelvaluelookup <- server.payload.value
+					node.channelDataStore <- serverMsg.Payload.Value
 				}
 
 			default:

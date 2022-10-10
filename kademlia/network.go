@@ -112,16 +112,23 @@ func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 }
 
 // Return wrapper of contact lists or data.
-func (network *Network) SendFindDataMessage(to *Contact, key KademliaID, data [20]byte) {
+func (network *Network) SendFindDataMessage(to *Contact, key KademliaID) {
 	m := new(msg)
 	m.Method = FindValue
 	m.Caller = network.msgHeader
-	m.Payload.Value = data
+	m.Payload.Store.Key = key
+	network.sendRequest(*m, *to)
+}
+func (network *Network) SendReturnDataMessage(to *Contact, data []byte) {
+	m := new(msg)
+	m.Method = FindValue
+	m.Caller = network.msgHeader
+	m.Payload.Store.Value = data
 	network.sendRequest(*m, *to)
 }
 
 //Return nothing as we're simply passing data to others to handle
-func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data [20]byte, status chan bool) {
+func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data []byte, status chan bool) {
 	//
 	m := new(msg)
 	m.Method = Store
