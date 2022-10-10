@@ -3,6 +3,7 @@ package d7024e
 import (
 	"fmt"
 	"log"
+	"os"
 	"strconv"
 	"sync"
 )
@@ -56,6 +57,7 @@ func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
 	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
+
 	return &kademliaNode
 }
 
@@ -118,17 +120,18 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 	}
 }
 
-func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Contact {
+func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 	node.NodeLookup(target)
-	return node.routingTable.FindClosestContacts(target, count)
 }
 
-func (node *Kademlia) LookupData(hash string) {
+func (node *Kademlia) LookupData(hash string) (string, string) {
 	// TODO
+	return hash, node.routingTable.me.Address //ändra så att den returnar rätt värde och IP addressen eller node namnet det var i
 }
 
-func (node *Kademlia) Store(data *string) {
+func (node *Kademlia) Store(data *string) string {
 	node.datastore.Insert(data)
+	return node.datastore.Get(*node.routingTable.me.ID)
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
@@ -143,6 +146,7 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
+	go Cli(os.Stdout, node)
 	for {
 		serverMsg := <-node.channelServerInput
 		node.routingTable.AddContact(serverMsg.Caller)

@@ -32,10 +32,10 @@ func Put(node Kademlia, input string) {
 	fmt.Println("Hash is: ", hash)
 }
 func Get(node Kademlia, hash string) {
-	value, id := node.LookupData(hash)
-	if id == nil {
-		fmt.Println("")
+	value, getNode := node.LookupData(hash)
+	if value == "" {
+		fmt.Println("Couldn't find requested value")
 	} else {
-		fmt.Println("Value found: ", value)
+		fmt.Println("Value found: ", value, " In node: ", getNode)
 	}
 }
