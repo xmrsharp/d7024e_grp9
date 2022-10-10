@@ -173,6 +173,7 @@ func (node *Kademlia) StoreValue(data []byte) {
 	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
 	log.Println("Trying to store key: " + key.String())
 	node.NodeLookup(&key)
+	log.Println("Nodelookup complete, neighbour next")
 	//Array with contacs
 	neighbours := node.routingTable.FindClosestContacts(&key, K_VALUE)
 	//Loop through closest contacts and try storing on them.
