@@ -62,12 +62,7 @@ func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
-<<<<<<< HEAD
 	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore, channelDataStore}
-=======
-	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
-
->>>>>>> wilmer
 	return &kademliaNode
 }
 
@@ -134,7 +129,6 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 	node.NodeLookup(target)
 }
 
-<<<<<<< HEAD
 /*
  	Check that the hash is valid
  	Check if the data is found on this node
@@ -148,7 +142,7 @@ func (node *Kademlia) LookupData(key KademliaID) []byte {
 	node.NodeLookup(&key)
 	var val []byte
 	//Array with contacs
-	neighbours := node.FindClosestContacts(&key, K_VALUE)
+	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
 	// skicka till alla noder  fan yolo
 	// mao node lookup sendfinddata till alla du hittat
 	for i := 0; i < len(neighbours); i++ {
@@ -169,7 +163,7 @@ Update routing table for the new id
 Get closest contacts for id and try sending store message to them
 */
 
-func (node *Kademlia) StoreValue(data []byte, status chan bool) {
+func (node *Kademlia) StoreValue(data []byte) {
 	log.Println("Store command in kademlia.go called with data:")
 	log.Println(data)
 	hashed := Hash(data)
@@ -180,7 +174,7 @@ func (node *Kademlia) StoreValue(data []byte, status chan bool) {
 	log.Println("Trying to store key: " + key.String())
 	node.NodeLookup(&key)
 	//Array with contacs
-	neighbours := node.FindClosestContacts(&key, K_VALUE)
+	neighbours := node.routingTable.FindClosestContacts(&key, K_VALUE)
 	//Loop through closest contacts and try storing on them.
 	for i := 0; i < len(neighbours); i++ {
 		storeStatus := make(chan bool)
@@ -192,8 +186,6 @@ func (node *Kademlia) StoreValue(data []byte, status chan bool) {
 			log.Println("TOOK TOO LONG TIME!!")
 		}
 	}
-	status <- true
-
 }
 
 func Hash(data []byte) string {
@@ -201,16 +193,6 @@ func Hash(data []byte) string {
 	key := hex.EncodeToString(sha1[:])
 
 	return key
-=======
-func (node *Kademlia) LookupData(hash string) (string, string) {
-	// TODO
-	return hash, node.routingTable.me.Address //ändra så att den returnar rätt värde och IP addressen eller node namnet det var i
-}
-
-func (node *Kademlia) Store(data *string) string {
-	node.datastore.Insert(data)
-	return node.datastore.Get(*node.routingTable.me.ID)
->>>>>>> wilmer
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
