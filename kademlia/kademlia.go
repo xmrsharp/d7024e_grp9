@@ -1,14 +1,18 @@
 package d7024e
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"strconv"
 	"sync"
+	"time"
 )
 
 const (
 	ALPHA_VALUE = 3
+	K_VALUE     = 20
 )
 
 // SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
@@ -43,19 +47,21 @@ type Kademlia struct {
 	channelNodeLookup   chan []Contact
 	routingTable        *RoutingTable
 	datastore           DataStore
+	channelDataStore    chan []byte
 }
 
 func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
+	channelDataStore := make(chan []byte)
 	addrs := ip + ":" + strconv.Itoa(port)
 	outgoingRequests := NewSharedMap()
 	selfContact := NewContact(id, addrs)
 	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
 	datastore := NewDataStore()
-	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore}
+	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore, channelDataStore}
 	return &kademliaNode
 }
 
@@ -123,12 +129,72 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) []Conta
 	return node.routingTable.FindClosestContacts(target, count)
 }
 
-func (node *Kademlia) LookupData(hash string) {
-	// TODO
+/*
+ 	Check that the hash is valid
+ 	Check if the data is found on this node
+	Send request to look for the data on other nodes
+		NodeLookup (key = target)
+		Send request to all contacts found in the lookup.
+*/
+func (node *Kademlia) LookupData(key KademliaID) []byte {
+	log.Println("LookupData command in kademlia.go called with key:")
+	log.Println(key)
+	node.NodeLookup(&key)
+	var val []byte
+	//Array with contacs
+	neighbours := node.FindClosestContacts(&key, K_VALUE)
+	// skicka till alla noder  fan yolo
+	// mao node lookup sendfinddata till alla du hittat
+	for i := 0; i < len(neighbours); i++ {
+		go node.server.SendFindDataMessage(&(neighbours[i]), key)
+		log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+	}
+	//nu har vi skickat vänta p åsvaret fan
+	val = <-node.channelDataStore
+	return val
 }
 
-func (node *Kademlia) Store(data *string) {
-	node.datastore.Insert(data)
+//send get value with KEY
+// val = lookupdata(key)
+//print val
+/*
+Create new random ID
+Update routing table for the new id
+Get closest contacts for id and try sending store message to them
+*/
+
+func (node *Kademlia) StoreValue(data []byte, status chan bool) {
+	log.Println("Store command in kademlia.go called with data:")
+	log.Println(data)
+	hashed := Hash(data)
+	//str2B := []byte(hashed)
+	key := NewKademliaID(&hashed)
+
+	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
+	log.Println("Trying to store key: " + key.String())
+	node.NodeLookup(&key)
+	//Array with contacs
+	neighbours := node.FindClosestContacts(&key, K_VALUE)
+	//Loop through closest contacts and try storing on them.
+	for i := 0; i < len(neighbours); i++ {
+		storeStatus := make(chan bool)
+		go node.server.SendStoreMessage(&(neighbours[i]), key, data, storeStatus)
+		select {
+		case <-storeStatus:
+			log.Println("Stored data on node: " + (neighbours[i]).ID.String())
+		case <-time.After(10 * time.Second):
+			log.Println("TOOK TOO LONG TIME!!")
+		}
+	}
+	status <- true
+
+}
+
+func Hash(data []byte) string {
+	sha1 := sha1.Sum([]byte(data))
+	key := hex.EncodeToString(sha1[:])
+
+	return key
 }
 
 func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID) {
@@ -137,12 +203,17 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 	}
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
-	node.NodeLookup(node.routingTable.me.ID)
+
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.server.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
+	// go func() {
+	// 	time.Sleep(2 * time.Second)
+	// 	another_node := node.routingTable.FindClosestContacts(NewRandomKademliaID(), 2)
+	// 	node.server.SendStoreMessage(&another_node[0].ID)
+	// }()
 	for {
 		serverMsg := <-node.channelServerInput
 		node.routingTable.AddContact(serverMsg.Caller)
@@ -156,7 +227,9 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 					node.server.SendPongMessage(&serverMsg.Caller)
 				}
 			case Store:
-				// TODO Handle inc store event.
+				key := serverMsg.Payload.Store.Key
+				value := serverMsg.Payload.Store.Value
+				node.datastore.Insert(key, value)
 			case FindNode:
 				if serverMsg.Payload.Candidates == nil {
 					node.routingTable.AddContact(serverMsg.Caller)
@@ -175,6 +248,18 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 				}
 			case FindValue:
 				// TODO Handle inc find value event.
+				// key = msg.Payload.Key
+				// res = node.DataStoreTable.get(key)
+				// return res
+				if serverMsg.Payload.Value == nil {
+					//ngn vill hitta värdet
+					val := node.datastore.Get(serverMsg.Payload.Key)
+					node.server.SendReturnDataMessage(&serverMsg.Caller, val)
+				} else {
+					// svar från annan nod datastore att här är värdet
+					node.channelDataStore <- serverMsg.Payload.Value
+				}
+
 			default:
 				log.Println("PANIC - UNKNOWN RPC METHOD")
 			}
