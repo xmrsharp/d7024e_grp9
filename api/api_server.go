@@ -9,20 +9,17 @@ import (
 	"strings"
 )
 
+// TODO Upd request method similar to message to not hardcode values.
 type APIChannel struct {
-	ApiResponseChannel chan string
-	ApiRequestMsg      string
+	ApiResponseChannel chan []byte
+	ApiRequestMethod   string
+	ApiRequestPayload  []byte
 }
 
 type APIServer struct {
 	channelNode chan<- APIChannel
 	server      *http.Server
 }
-
-// Communication with node:
-// Send APIChannelMSG trhough channelNode.
-// And await reply in the Channel of the APIChannel
-// That way we're lbocking on a specific channel.
 
 func NewServer(addr string, port int, ch chan APIChannel) *APIServer {
 	httpServer := http.Server{Addr: addr + ":" + strconv.Itoa(port)}
@@ -46,10 +43,11 @@ func (as *APIServer) Listen() {
 }
 
 type getObjectResponse struct {
-	Value string `json:value`
+	Value string `json:Value`
 }
 
 // POST /objects - create object in http body
+// Return body of created object with location header of location.
 func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 	// Read value to save.
 	storeValue, _ := io.ReadAll(r.Body)
@@ -59,18 +57,27 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nodeChannelMsg := APIChannel{ApiResponseChannel: make(chan string),
-		ApiRequestMsg: ""}
+	nodeChannelMsg := APIChannel{
+		ApiResponseChannel: make(chan []byte),
+		ApiRequestMethod:   "STORE_VALUE",
+		ApiRequestPayload:  storeValue,
+	}
 
 	// Write msg to node.
 	as.channelNode <- nodeChannelMsg
 	// Await response in wrapped channel
-	nodeRsp := <-nodeChannelMsg.ApiResponseChannel
+	key := <-nodeChannelMsg.ApiResponseChannel
+	if len(key) != 20 {
+		log.Println("TODO MAKE SURE THIS WORKS WHEN CREATE NODE IMPLEMENTED.")
+		// Failed to store value.
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	// TODO Remove when making sure calls to create node and get node are working.
-	log.Println("RECIEVED RESP:", nodeRsp)
+	log.Println("RECIEVED RESP:", key)
 
 	// Return response to caller
-	w.Header().Add("Location", "/objects/"+nodeRsp)
+	w.Header().Add("Location", "/objects/"+string(key[:]))
 	w.WriteHeader(http.StatusCreated)
 	w.Write(storeValue)
 }
@@ -89,20 +96,27 @@ func (as *APIServer) getObject(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	nodeChannelMsg := APIChannel{ApiResponseChannel: make(chan string),
-		ApiRequestMsg: "INCOMING GET REQUEST WITH HASH:"}
+	nodeChannelMsg := APIChannel{
+		ApiResponseChannel: make(chan []byte),
+		ApiRequestMethod:   "GET_VALUE",
+		ApiRequestPayload:  hash,
+	}
 
 	// Write msg to node.
 	as.channelNode <- nodeChannelMsg
 	// Await response in wrapped channel
-	nodeRsp := <-nodeChannelMsg.ApiResponseChannel
-
+	keyValue := <-nodeChannelMsg.ApiResponseChannel
+	if len(keyValue) == 0 {
+		// Failed to get hash value.
+		w.WriteHeader(http.StatusBadRequest)
+	}
 	// TODO: Make sure storevalue and findnode are valid.
-	log.Println("RECIEVED RESP:", nodeRsp)
+	log.Println("RECIEVED RESP:", keyValue)
 
 	// Return response to caller.
 	w.Header().Set("Content-Type", "application/json")
-	body := getObjectResponse{Value: "THIS_IS_A_TEST_VALUE"}
+	// TODO Replace when node functions tested and done.
+	body := getObjectResponse{Value: "TODO REPLACE WHEN FIND VALUE IS IMPLEMENTED IN NODE."}
 	json.NewEncoder(w).Encode(body)
 
 }

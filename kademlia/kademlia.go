@@ -158,6 +158,23 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 	}
 }
 
+func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
+	switch apiRequest.ApiRequestMethod {
+	case "GET_VALUE":
+		key := apiRequest.ApiRequestPayload
+		log.Println("INSERT CALL HERE TO GET VALUE FROM KEY:", key, " AND RETURN THE VALUE")
+		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM GET VALUE")
+	case "STORE_VALUE":
+		valueStore := apiRequest.ApiRequestPayload
+		log.Println("INSERT CALL HERE TO STORE VALUE OF:", valueStore, " AND RETURN THE KEY HASH FROM CREATED KEY VALUE")
+		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM STORE VALUE")
+	default:
+		log.Panic("RECIEVED INVALID API REQUEST METHOD FROM HTTP SERVER", apiRequest)
+
+	}
+
+}
+
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	go node.kademliaServer.Listen()
 	go node.apiServer.Listen()
@@ -165,13 +182,8 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 	for {
 		select {
 		case apiRequest := <-node.channelAPI:
-			// TODO When findNode, findValue is implemented update
-			log.Println("RECIEVED API REQUEST: ", apiRequest.ApiRequestMsg, "WHICH RESPONSE SHOULD BE DEPENDENT ON.")
-			response := "TEST_RESPONSE."
-			// Return msg to the wrapped channe - add go routine when other methods operational.
-			apiRequest.ApiResponseChannel <- response
+			node.handleIncomingAPIRequest(apiRequest)
 		case kademliaServerMsg := <-node.channelServerInput:
-			log.Println("RECIEVED KAD NODE REQUEST")
 			node.handleIncomingRPC(kademliaServerMsg)
 		}
 	}
