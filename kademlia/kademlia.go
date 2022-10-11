@@ -71,7 +71,7 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 		for activeAlphaCalls < ALPHA_VALUE && currentCandidates.Len() > 0 {
 			tempContact := currentCandidates.PopClosest()
 			// Check for alrdy consumed nodes.
-			if consumedCandidates[tempContact.ID] == 1 {
+			if consumedCandidates[tempContact.ID] == 1 || *tempContact.ID == *node.routingTable.me.ID {
 				// Already consumed contact - dead end.
 				activeAlphaCalls--
 			} else {
