@@ -8,6 +8,7 @@ COPY go.sum ./
 
 RUN go mod download
 
+ADD api ./api
 ADD kademlia ./kademlia
 ADD cmd ./cmd
 

@@ -1,4 +1,4 @@
-package d7024e
+package kademlia
 
 import (
 	"log"
@@ -9,13 +9,13 @@ import (
 type Network struct {
 	msgHeader        Contact
 	wg               sync.WaitGroup
-	outgoingRequests *SharedMap
+	outgoingRequests *OutgoingRegister
 	addrs            *net.UDPAddr
 	channelWriteNode chan<- msg
 	channelReadNode  <-chan msg
 }
 
-func NewNetwork(msgHeader Contact, addrs string, outgoingRequests *SharedMap, write chan<- msg, read <-chan msg) *Network {
+func NewNetwork(msgHeader Contact, addrs string, outgoingRequests *OutgoingRegister, write chan<- msg, read <-chan msg) *Network {
 	udpAddr, err := net.ResolveUDPAddr("udp", addrs)
 	if err != nil {
 		log.Panicf(("CANNOT SERVE ON SPEC ADDR - %s"), err)
@@ -100,9 +100,7 @@ func (network *Network) respondFindContactMessage(to *Contact, candidates []Cont
 	m.Method = FindNode
 	m.Caller = network.msgHeader
 	m.Payload.Candidates = candidates
-	network.outgoingRequests.mutex.Lock()
-	network.outgoingRequests.outgoingRegister[*to.ID] += 1
-	network.outgoingRequests.mutex.Unlock()
+	network.outgoingRequests.RegisterIncoming(*to.ID)
 	network.sendRequest(*m, *to)
 }
 func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
@@ -110,9 +108,7 @@ func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 	m.Method = FindNode
 	m.Caller = network.msgHeader
 	m.Payload.FindNode = target
-	network.outgoingRequests.mutex.Lock()
-	network.outgoingRequests.outgoingRegister[*to.ID] += 1
-	network.outgoingRequests.mutex.Unlock()
+	network.outgoingRequests.RegisterOutgoing(*to.ID)
 	network.sendRequest(*m, *to)
 }
 

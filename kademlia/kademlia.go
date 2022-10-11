@@ -1,13 +1,13 @@
-package d7024e
+package kademlia
 
 import (
+	"D7024E_GRP9/api"
 	"crypto/sha1"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -16,33 +16,13 @@ const (
 	K_VALUE     = 20
 )
 
-// SharedMap used by Kademlia and network to synchronize expected incoming responses by other nodes.
-type SharedMap struct {
-	mutex            *sync.Mutex
-	outgoingRegister map[KademliaID]int
-}
-
-func NewSharedMap() *SharedMap {
-	return &SharedMap{&sync.Mutex{}, make(map[KademliaID]int)}
-}
-
-func (sm *SharedMap) expectingIncRequest() bool {
-	sm.mutex.Lock()
-	for _, v := range sm.outgoingRegister {
-		if v > 0 {
-			sm.mutex.Unlock()
-			return true
-		}
-	}
-	sm.mutex.Unlock()
-	return false
-
-}
-
+// TODO go over all channels in play.
 // Logic and state of Kademlia node
 type Kademlia struct {
-	server              *Network
-	outgoingRequests    *SharedMap
+	kademliaServer      *Network
+	apiServer           *api.APIServer
+	outgoingRequests    *OutgoingRegister
+	channelAPI          <-chan api.APIChannel
 	channelServerInput  <-chan msg
 	channelServerOutput chan<- msg
 	channelNodeLookup   chan []Contact
@@ -51,24 +31,32 @@ type Kademlia struct {
 	channelDataStore    chan []byte
 }
 
-func NewKademlia(ip string, port int, id *KademliaID) *Kademlia {
+func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kademlia {
+
+	// Init shared channels
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
 	channelDataStore := make(chan []byte)
-	addrs := ip + ":" + strconv.Itoa(port)
-	outgoingRequests := NewSharedMap()
+
+	addrs := ip + ":" + strconv.Itoa(portKademlia)
+	outgoingRequests := NewOutgoingRegister()
 	selfContact := NewContact(id, addrs)
-	server := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
+	kademliaServer := NewNetwork(selfContact, addrs, outgoingRequests, channelServerInput, channelServerOutput)
 	routingTable := NewRoutingTable(selfContact)
+
+	channelAPI := make(chan api.APIChannel)
+	apiServer := api.NewServer(ip, portAPI, channelAPI)
+
 	datastore := NewDataStore()
-	kademliaNode := Kademlia{server, outgoingRequests, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore, channelDataStore}
+
+	kademliaNode := Kademlia{kademliaServer, apiServer, outgoingRequests, channelAPI, channelServerInput, channelServerOutput, channelNodeLookup, routingTable, datastore, channelDataStore}
 	return &kademliaNode
 }
 
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 	candidates := node.routingTable.FindClosestContacts(target, 20)
-	node.server.respondFindContactMessage(caller, candidates)
+	node.kademliaServer.respondFindContactMessage(caller, candidates)
 }
 
 func (node *Kademlia) NodeLookup(target *KademliaID) {
@@ -86,29 +74,30 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 
 	var newCandidates []Contact
 	for probedNoCloser < BucketSize {
+
 		if currentClosestNode.ID.Equals(target) {
 			return
 		}
 		for activeAlphaCalls < ALPHA_VALUE && currentCandidates.Len() > 0 {
 			tempContact := currentCandidates.PopClosest()
 			// Check for alrdy consumed nodes.
-			if consumedCandidates[tempContact.ID] == 1 {
+			if consumedCandidates[tempContact.ID] == 1 || *tempContact.ID == *node.routingTable.me.ID {
 				// Already consumed contact - dead end.
 				activeAlphaCalls--
 			} else {
 				consumedCandidates[tempContact.ID] = 1
-				node.server.SendFindContactMessage(&tempContact, *target)
+				node.kademliaServer.SendFindContactMessage(&tempContact, *target)
 			}
 			activeAlphaCalls++
 		}
-		if !node.outgoingRequests.expectingIncRequest() {
+		if !node.outgoingRequests.ExpectingAnyRequest() {
 			return
 		}
 		newCandidates = <-node.channelNodeLookup
 		// Investigate to why I have to recalculate the distances?
 		for i := 0; i < len(newCandidates); i++ {
 			newCandidates[i].CalcDistance(target)
-			node.server.SendPingMessage(&(newCandidates[i]))
+			node.kademliaServer.SendPingMessage(&(newCandidates[i]))
 		}
 
 		// Only need to check head of list as list is ordered on arrival.
@@ -130,11 +119,11 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 }
 
 /*
- 	Check that the hash is valid
- 	Check if the data is found on this node
-	Send request to look for the data on other nodes
-		NodeLookup (key = target)
-		Send request to all contacts found in the lookup.
+	 	Check that the hash is valid
+	 	Check if the data is found on this node
+		Send request to look for the data on other nodes
+			NodeLookup (key = target)
+			Send request to all contacts found in the lookup.
 */
 func (node *Kademlia) LookupData(key KademliaID) []byte {
 	log.Println("LookupData command in kademlia.go called with key:")
@@ -143,20 +132,14 @@ func (node *Kademlia) LookupData(key KademliaID) []byte {
 	var val []byte
 	//Array with contacs
 	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
-	// skicka till alla noder  fan yolo
-	// mao node lookup sendfinddata till alla du hittat
 	for i := 0; i < len(neighbours); i++ {
-		go node.server.SendFindDataMessage(&(neighbours[i]), key)
+		go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
 		log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
 	}
-	//nu har vi skickat vänta p åsvaret fan
 	val = <-node.channelDataStore
 	return val
 }
 
-//send get value with KEY
-// val = lookupdata(key)
-//print val
 /*
 Create new random ID
 Update routing table for the new id
@@ -178,7 +161,7 @@ func (node *Kademlia) StoreValue(data []byte) {
 	//Loop through closest contacts and try storing on them.
 	for i := 0; i < len(neighbours); i++ {
 		storeStatus := make(chan bool)
-		go node.server.SendStoreMessage(&(neighbours[i]), key, data, storeStatus)
+		go node.kademliaServer.SendStoreMessage(&(neighbours[i]), key, data, storeStatus)
 		select {
 		case <-storeStatus:
 			log.Println("Stored data on node: " + (neighbours[i]).ID.String())
@@ -201,63 +184,86 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 	}
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
+	node.NodeLookup(node.routingTable.me.ID)
+
+}
+
+func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
+	log.Printf(("RECIEVED [%s] EVENT FROM [%s]:[%s]"), kademliaServerMsg.Method.String(), kademliaServerMsg.Caller.Address, kademliaServerMsg.Caller.ID)
+	if kademliaServerMsg.Caller.Address == node.routingTable.me.Address {
+		log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", kademliaServerMsg.Caller.ID)
+		return
+	}
+
+	// Adding caller of any incoming request.
+	node.routingTable.AddContact(kademliaServerMsg.Caller)
+	switch kademliaServerMsg.Method {
+	case Ping:
+		if kademliaServerMsg.Payload.PingPong == "PING" {
+			node.kademliaServer.SendPongMessage(&kademliaServerMsg.Caller)
+		}
+	case FindNode:
+		// TODO Need to check that register is correctly incremented/decremented.
+		if kademliaServerMsg.Payload.Candidates == nil {
+			node.ReturnCandidates(&kademliaServerMsg.Caller, &kademliaServerMsg.Payload.FindNode)
+		} else {
+			if node.outgoingRequests.ExpectingRequest(*kademliaServerMsg.Caller.ID) {
+				node.channelNodeLookup <- kademliaServerMsg.Payload.Candidates
+			} else {
+				log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", kademliaServerMsg.Caller.ID)
+			}
+		}
+	case FindValue:
+		// TODO Handle inc find value event.
+		// key = msg.Payload.Key
+		// res = node.DataStoreTable.get(key)
+		// return res
+		if kademliaServerMsg.Payload.Value == nil {
+			//ngn vill hitta värdet
+			val := node.datastore.Get(kademliaServerMsg.Payload.Key)
+			node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)
+		} else {
+			// svar från annan nod datastore att här är värdet
+			node.channelDataStore <- kademliaServerMsg.Payload.Value
+		}
+	case Store:
+		// TODO Handle inc store event.
+		key := kademliaServerMsg.Payload.Store.Key
+		value := kademliaServerMsg.Payload.Store.Value
+		node.datastore.Insert(key, value)
+	default:
+		log.Println("PANIC - UNKNOWN RPC METHOD")
+	}
+}
+
+func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
+	switch apiRequest.ApiRequestMethod {
+	case "GET_VALUE":
+		key := apiRequest.ApiRequestPayload
+		log.Println("INSERT CALL HERE TO GET VALUE FROM KEY:", key, " AND RETURN THE VALUE")
+		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM GET VALUE")
+	case "STORE_VALUE":
+		valueStore := apiRequest.ApiRequestPayload
+		log.Println("INSERT CALL HERE TO STORE VALUE OF:", valueStore, " AND RETURN THE KEY HASH FROM CREATED KEY VALUE")
+		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM STORE VALUE")
+	default:
+		log.Panic("RECIEVED INVALID API REQUEST METHOD FROM HTTP SERVER", apiRequest)
+
+	}
 
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
-	go node.server.Listen()
+	go node.kademliaServer.Listen()
+	go node.apiServer.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	go Cli(os.Stdout, node)
 	for {
-		serverMsg := <-node.channelServerInput
-		node.routingTable.AddContact(serverMsg.Caller)
-		log.Printf(("RECIEVED [%s] EVENT FROM [%s]:[%s]"), serverMsg.Method.String(), serverMsg.Caller.Address, serverMsg.Caller.ID)
-		if serverMsg.Caller.Address == node.routingTable.me.Address {
-			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", serverMsg.Caller.ID)
-		} else {
-			switch serverMsg.Method {
-			case Ping:
-				if serverMsg.Payload.PingPong == "PING" {
-					node.server.SendPongMessage(&serverMsg.Caller)
-				}
-			case Store:
-				key := serverMsg.Payload.Store.Key
-				value := serverMsg.Payload.Store.Value
-				node.datastore.Insert(key, value)
-			case FindNode:
-				if serverMsg.Payload.Candidates == nil {
-					node.routingTable.AddContact(serverMsg.Caller)
-					node.ReturnCandidates(&serverMsg.Caller, &serverMsg.Payload.FindNode)
-				} else {
-					node.outgoingRequests.mutex.Lock()
-					if node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] > 0 {
-						node.routingTable.AddContact(serverMsg.Caller)
-						node.outgoingRequests.outgoingRegister[*serverMsg.Caller.ID] -= 1
-						node.outgoingRequests.mutex.Unlock()
-						node.channelNodeLookup <- serverMsg.Payload.Candidates
-					} else {
-						log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", serverMsg.Caller.ID)
-						node.outgoingRequests.mutex.Unlock()
-					}
-				}
-			case FindValue:
-				// TODO Handle inc find value event.
-				// key = msg.Payload.Key
-				// res = node.DataStoreTable.get(key)
-				// return res
-				if serverMsg.Payload.Value == nil {
-					//ngn vill hitta värdet
-					val := node.datastore.Get(serverMsg.Payload.Key)
-					node.server.SendReturnDataMessage(&serverMsg.Caller, val)
-				} else {
-					// svar från annan nod datastore att här är värdet
-					node.channelDataStore <- serverMsg.Payload.Value
-				}
-
-			default:
-				log.Println("PANIC - UNKNOWN RPC METHOD")
-			}
-
+		select {
+		case apiRequest := <-node.channelAPI:
+			node.handleIncomingAPIRequest(apiRequest)
+		case kademliaServerMsg := <-node.channelServerInput:
+			node.handleIncomingRPC(kademliaServerMsg)
 		}
 	}
 }
