@@ -100,7 +100,6 @@ func (network *Network) respondFindContactMessage(to *Contact, candidates []Cont
 	m.Method = FindNode
 	m.Caller = network.msgHeader
 	m.Payload.Candidates = candidates
-	network.outgoingRequests.RegisterIncoming(*to.ID)
 	network.sendRequest(*m, *to)
 }
 func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
@@ -128,7 +127,7 @@ func (network *Network) SendReturnDataMessage(to *Contact, data []byte) {
 	network.sendRequest(*m, *to)
 }
 
-//Return nothing as we're simply passing data to others to handle
+// Return nothing as we're simply passing data to others to handle
 func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data []byte, status chan bool) {
 	//
 	m := new(msg)
@@ -136,9 +135,6 @@ func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data []
 	m.Caller = network.msgHeader
 	m.Payload.Store.Key = target
 	m.Payload.Store.Value = data
-	network.outgoingRequests.mutex.Lock()
-	network.outgoingRequests.outgoingRegister[*to.ID] += 1
-	network.outgoingRequests.mutex.Unlock()
 	network.sendRequest(*m, *to)
 	status <- true
 

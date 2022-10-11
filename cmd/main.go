@@ -28,16 +28,15 @@ func GetOutboundIP() net.IP {
 }
 
 func main() {
-	//nodeIp := GetOutboundIP()
-	nodeIp := "127.0.0.1" // TODO When back to IP -> Insert .String() for checks.For testing purpouses
+	nodeIp := GetOutboundIP().String()
+	//nodeIp := "127.0.0.1"
 
 	BootLoaderId := kademlia.NewKademliaIDString(BOOT_LOADER_STRING)
-	//nodeIp = nodeIp.String()
-	if nodeIp == BOOT_LOADER_IP { // Insert .String() here at nodeIp.
-		node := kademlia.NewKademlia(nodeIp, PORT_KAD, PORT_API, BootLoaderId) // Insert .String() here aswell
+	if nodeIp == BOOT_LOADER_IP {
+		node := kademlia.NewKademlia(nodeIp, PORT_KAD, PORT_API, BootLoaderId)
 		node.Run("", *BootLoaderId)
 	} else {
-		node := kademlia.NewKademlia(nodeIp, PORT_KAD, PORT_API, kademlia.NewRandomKademliaID()) // Insert .String() here at nodeIP
+		node := kademlia.NewKademlia(nodeIp, PORT_KAD, PORT_API, kademlia.NewRandomKademliaID())
 		node.Run(BOOT_LOADER_IP+":"+strconv.Itoa(PORT_KAD), *BootLoaderId)
 	}
 }

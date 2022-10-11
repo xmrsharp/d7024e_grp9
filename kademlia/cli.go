@@ -1,4 +1,4 @@
-package d7024e
+package kademlia
 
 import (
 	"bufio"
@@ -12,9 +12,6 @@ var in *os.File = os.Stdin
 var out io.Writer = os.Stdout
 
 func Cli(output io.Writer, node *Kademlia) {
-	// address := "127.0.0.1:8888" //tror det ska vara 127.0.0.(0 eller 1)
-	// con, err := net.Dial("udp", address)
-	//
 	fmt.Println("starting CLI")
 	reader := bufio.NewReader(in)
 	for {
