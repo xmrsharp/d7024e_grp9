@@ -134,8 +134,9 @@ func (node *Kademlia) LookupData(key KademliaID) []byte {
 	log.Println("LookupData command in kademlia.go called with key:")
 	log.Println(&key)
 	var val []byte
-	if node.datastore.Get(key) != nil {
-		val = <-node.channelDataStore
+	val = node.datastore.Get(key)
+
+	if val != nil {
 		return val
 	} else {
 		node.NodeLookup(&key)
@@ -146,12 +147,17 @@ func (node *Kademlia) LookupData(key KademliaID) []byte {
 		// skicka till alla noder  fan yolo
 		// mao node lookup sendfinddata till alla du hittat
 		for i := 0; i < len(neighbours); i++ {
-			go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
-			log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+			if !(neighbours[i].ID.Equals(node.routingTable.me.ID)) {
+				go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
+				log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+			}
 		}
-		return nil
-	}
 
+	}
+	log.Println("AT VAL2 THE FUCKING CHANNEL SHITTTITITITIBANGANG")
+	val2 := <-node.channelDataStore
+	log.Println("DID WE GET PAST IT? FIND OUT IN POKEMON GO")
+	return val2
 }
 
 /*
@@ -236,7 +242,10 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 		if kademliaServerMsg.Payload.Value == nil {
 			//ngn vill hitta värdet
 			val := node.datastore.Get(kademliaServerMsg.Payload.Key)
-			node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)
+			if val != nil {
+				node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)
+			}
+
 		} else {
 			// svar från annan nod datastore att här är värdet
 			node.channelDataStore <- kademliaServerMsg.Payload.Value

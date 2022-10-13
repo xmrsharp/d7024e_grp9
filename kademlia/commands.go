@@ -37,6 +37,7 @@ func Get(node *Kademlia, hash string) {
 	key := NewKademliaID(&hash)
 	value := node.LookupData(key)
 	stringValue := string(value[:])
+	fmt.Println("STRINGVALUE IS: " + stringValue)
 	if stringValue == "" {
 		fmt.Println("Couldn't find requested value")
 	} else {

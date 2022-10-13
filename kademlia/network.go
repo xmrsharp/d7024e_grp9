@@ -123,7 +123,7 @@ func (network *Network) SendReturnDataMessage(to *Contact, data []byte) {
 	m := new(msg)
 	m.Method = FindValue
 	m.Caller = network.msgHeader
-	m.Payload.Store.Value = data
+	m.Payload.Value = data
 	network.sendRequest(*m, *to)
 }
 
