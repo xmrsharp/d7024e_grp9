@@ -16,5 +16,9 @@ func (data *DataStore) Insert(key KademliaID, val []byte) {
 }
 
 func (data *DataStore) Get(key KademliaID) []byte {
-	return data.data[key]
+	if val, ok := data.data[key]; ok {
+		return val
+	} else {
+		return nil
+	}
 }

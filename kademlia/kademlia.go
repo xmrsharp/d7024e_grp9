@@ -133,19 +133,25 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 func (node *Kademlia) LookupData(key KademliaID) []byte {
 	log.Println("LookupData command in kademlia.go called with key:")
 	log.Println(&key)
-	node.NodeLookup(&key)
 	var val []byte
-	//Array with contacs
-	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
-	log.Println("After neighbours in lookupdata")
-	// skicka till alla noder  fan yolo
-	// mao node lookup sendfinddata till alla du hittat
-	for i := 0; i < len(neighbours); i++ {
-		go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
-		log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+	if node.datastore.Get(key) != nil {
+		val = <-node.channelDataStore
+		return val
+	} else {
+		node.NodeLookup(&key)
+
+		//Array with contacs
+		neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
+		log.Println("After neighbours in lookupdata")
+		// skicka till alla noder  fan yolo
+		// mao node lookup sendfinddata till alla du hittat
+		for i := 0; i < len(neighbours); i++ {
+			go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
+			log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
+		}
+		return nil
 	}
-	val = <-node.channelDataStore
-	return val
+
 }
 
 /*
