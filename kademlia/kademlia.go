@@ -93,22 +93,27 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 		if !node.outgoingRequests.ExpectingAnyRequest() {
 			return
 		}
+		log.Println("At newcandidates channel row 107")
 		newCandidates = <-node.channelNodeLookup
 		// Investigate to why I have to recalculate the distances?
+		log.Println("After newcandidates")
 		for i := 0; i < len(newCandidates); i++ {
 			newCandidates[i].CalcDistance(target)
 			node.kademliaServer.SendPingMessage(&(newCandidates[i]))
 		}
-
+		log.Println("After forloop row 111")
 		// Only need to check head of list as list is ordered on arrival.
 		if !currentClosestNode.Less(&newCandidates[0]) {
 			// Got closer to target, update current closest and succesfull probes.
 			probedNoCloser = 0
 			currentClosestNode = newCandidates[0]
+			log.Println("inside if on 117")
 		} else {
 			// No closer to target.
 			probedNoCloser++
+			log.Println("Inside else on 125")
 		}
+		log.Println("Append currcand and subtract aAC")
 		currentCandidates.Append(newCandidates)
 		activeAlphaCalls--
 	}
@@ -127,11 +132,14 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 */
 func (node *Kademlia) LookupData(key KademliaID) []byte {
 	log.Println("LookupData command in kademlia.go called with key:")
-	log.Println(key)
+	log.Println(&key)
 	node.NodeLookup(&key)
 	var val []byte
 	//Array with contacs
 	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
+	log.Println("After neighbours in lookupdata")
+	// skicka till alla noder  fan yolo
+	// mao node lookup sendfinddata till alla du hittat
 	for i := 0; i < len(neighbours); i++ {
 		go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
 		log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
@@ -156,6 +164,7 @@ func (node *Kademlia) StoreValue(data []byte) {
 	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
 	log.Println("Trying to store key: " + key.String())
 	node.NodeLookup(&key)
+	log.Println("Nodelookup complete, neighbour next")
 	//Array with contacs
 	neighbours := node.routingTable.FindClosestContacts(&key, K_VALUE)
 	//Loop through closest contacts and try storing on them.

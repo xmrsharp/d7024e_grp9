@@ -16,7 +16,7 @@ func Commands(output io.Writer, node *Kademlia, commands []string) {
 		}
 	case "get":
 		if len(commands) == 2 {
-			Get(*node, commands[1])
+			Get(node, commands[1])
 		} else {
 			fmt.Println("Arg error")
 		}
@@ -32,7 +32,7 @@ func Put(node *Kademlia, input string) {
 	node.StoreValue(str2B)
 	fmt.Println("Hash is: ", str2B)
 }
-func Get(node Kademlia, hash string) {
+func Get(node *Kademlia, hash string) {
 	//str2B := []byte(hash)
 	key := NewKademliaID(&hash)
 	value := node.LookupData(key)
