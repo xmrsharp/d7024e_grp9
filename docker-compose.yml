@@ -1,7 +1,7 @@
 version: "3"
 services:
   kademlia_nodes:
-    image: testing_values:0.0
+    image: kadlab:latest
     stdin_open: true
     tty: true
     deploy:
