@@ -28,7 +28,7 @@ type Kademlia struct {
 	channelNodeLookup   chan []Contact
 	routingTable        *RoutingTable
 	datastore           DataStore
-	channelDataStore    chan []byte
+	channelDataStore    chan string
 }
 
 func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kademlia {
@@ -37,7 +37,7 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 	channelServerInput := make(chan msg)
 	channelServerOutput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
-	channelDataStore := make(chan []byte)
+	channelDataStore := make(chan string)
 
 	addrs := ip + ":" + strconv.Itoa(portKademlia)
 	outgoingRequests := NewOutgoingRegister()
@@ -93,27 +93,21 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 		if !node.outgoingRequests.ExpectingAnyRequest() {
 			return
 		}
-		log.Println("At newcandidates channel row 107")
 		newCandidates = <-node.channelNodeLookup
 		// Investigate to why I have to recalculate the distances?
-		log.Println("After newcandidates")
 		for i := 0; i < len(newCandidates); i++ {
 			newCandidates[i].CalcDistance(target)
 			node.kademliaServer.SendPingMessage(&(newCandidates[i]))
 		}
-		log.Println("After forloop row 111")
 		// Only need to check head of list as list is ordered on arrival.
 		if !currentClosestNode.Less(&newCandidates[0]) {
 			// Got closer to target, update current closest and succesfull probes.
 			probedNoCloser = 0
 			currentClosestNode = newCandidates[0]
-			log.Println("inside if on 117")
 		} else {
 			// No closer to target.
 			probedNoCloser++
-			log.Println("Inside else on 125")
 		}
-		log.Println("Append currcand and subtract aAC")
 		currentCandidates.Append(newCandidates)
 		activeAlphaCalls--
 	}
@@ -130,13 +124,14 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 			NodeLookup (key = target)
 			Send request to all contacts found in the lookup.
 */
-func (node *Kademlia) LookupData(key KademliaID) []byte {
+func (node *Kademlia) LookupData(key KademliaID) string {
 	log.Println("LookupData command in kademlia.go called with key:")
 	log.Println(&key)
-	var val []byte
+	var val string
 	val = node.datastore.Get(key)
+	log.Printf("VAL is %s AFTER datastore GET with KEY %s", val, key.String())
 
-	if val != nil {
+	if val != "" {
 		return val
 	} else {
 		node.NodeLookup(&key)
@@ -147,16 +142,16 @@ func (node *Kademlia) LookupData(key KademliaID) []byte {
 		// skicka till alla noder  fan yolo
 		// mao node lookup sendfinddata till alla du hittat
 		for i := 0; i < len(neighbours); i++ {
+			log.Printf("Forloop in LOOKUPDATA on lap: %d", i)
 			if !(neighbours[i].ID.Equals(node.routingTable.me.ID)) {
+				log.Printf("INSIDE if statement in LOOKUPDATA, KEY IS: %s", key.String())
 				go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
 				log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
 			}
 		}
 
 	}
-	log.Println("AT VAL2 THE FUCKING CHANNEL SHITTTITITITIBANGANG")
 	val2 := <-node.channelDataStore
-	log.Println("DID WE GET PAST IT? FIND OUT IN POKEMON GO")
 	return val2
 }
 
@@ -166,12 +161,12 @@ Update routing table for the new id
 Get closest contacts for id and try sending store message to them
 */
 
-func (node *Kademlia) StoreValue(data []byte) {
+func (node *Kademlia) StoreValue(data string) {
 	log.Println("Store command in kademlia.go called with data:")
 	log.Println(data)
-	hashed := Hash(data)
+	//hashed := Hash(data)
 	//str2B := []byte(hashed)
-	key := NewKademliaID(&hashed)
+	key := NewKademliaID(&data)
 
 	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
 	log.Println("Trying to store key: " + key.String())
@@ -192,7 +187,7 @@ func (node *Kademlia) StoreValue(data []byte) {
 	}
 }
 
-func Hash(data []byte) string {
+func Hash(data string) string {
 	sha1 := sha1.Sum([]byte(data))
 	key := hex.EncodeToString(sha1[:])
 
@@ -239,10 +234,10 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 		// key = msg.Payload.Key
 		// res = node.DataStoreTable.get(key)
 		// return res
-		if kademliaServerMsg.Payload.Value == nil {
+		if kademliaServerMsg.Payload.Value == "" {
 			//ngn vill hitta värdet
 			val := node.datastore.Get(kademliaServerMsg.Payload.Key)
-			if val != nil {
+			if val != "" {
 				node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)
 			}
 

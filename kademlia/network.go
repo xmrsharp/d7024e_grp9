@@ -117,9 +117,10 @@ func (network *Network) SendFindDataMessage(to *Contact, key KademliaID) {
 	m.Method = FindValue
 	m.Caller = network.msgHeader
 	m.Payload.Store.Key = key
+	log.Printf("SendFindDataMessage called with KEY: %s", key.String())
 	network.sendRequest(*m, *to)
 }
-func (network *Network) SendReturnDataMessage(to *Contact, data []byte) {
+func (network *Network) SendReturnDataMessage(to *Contact, data string) {
 	m := new(msg)
 	m.Method = FindValue
 	m.Caller = network.msgHeader
@@ -128,7 +129,7 @@ func (network *Network) SendReturnDataMessage(to *Contact, data []byte) {
 }
 
 // Return nothing as we're simply passing data to others to handle
-func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data []byte, status chan bool) {
+func (network *Network) SendStoreMessage(to *Contact, target KademliaID, data string, status chan bool) {
 	//
 	m := new(msg)
 	m.Method = Store
