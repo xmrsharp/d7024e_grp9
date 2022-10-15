@@ -16,7 +16,6 @@ const (
 	K_VALUE     = 20
 )
 
-// TODO go over all channels in play.
 // Logic and state of Kademlia node
 type Kademlia struct {
 	kademliaServer      *Network
@@ -60,6 +59,20 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 }
 
 func (node *Kademlia) NodeLookup(target *KademliaID) {
+	// Draining stale responses from channel (NOTE WIP)
+	func(drain chan []Contact) {
+		for {
+			select {
+			case _ = <-drain:
+				log.Println("REMOVED STALE FIND_NODE RESPONSE:")
+			default:
+				return
+			}
+		}
+	}(node.channelNodeLookup)
+
+	// Clean out any straglers from incoming requests that have not responded within a set amount of time.
+	defer node.outgoingRequests.ResetRegister()
 	// Initiate candidates.
 	currentCandidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
 
@@ -67,25 +80,23 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 	currentClosestNode := currentCandidates.GetClosest()
 	probedNoCloser := 0
 
-	consumedCandidates := make(map[*KademliaID]int)
+	// Visited nodes
+	consumedCandidates := make(map[KademliaID]int)
 
 	// For keeping track off active outgoing FindNode RPCs.
 	activeAlphaCalls := 0
-
-	var newCandidates []Contact
 	for probedNoCloser < BucketSize {
-
 		if currentClosestNode.ID.Equals(target) {
 			return
 		}
 		for activeAlphaCalls < ALPHA_VALUE && currentCandidates.Len() > 0 {
 			tempContact := currentCandidates.PopClosest()
 			// Check for alrdy consumed nodes.
-			if consumedCandidates[tempContact.ID] == 1 || *tempContact.ID == *node.routingTable.me.ID {
+			if consumedCandidates[*tempContact.ID] == 1 || *tempContact.ID == *node.routingTable.me.ID {
 				// Already consumed contact - dead end.
 				activeAlphaCalls--
 			} else {
-				consumedCandidates[tempContact.ID] = 1
+				consumedCandidates[*tempContact.ID] += 1
 				node.kademliaServer.SendFindContactMessage(&tempContact, *target)
 			}
 			activeAlphaCalls++
@@ -93,28 +104,29 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 		if !node.outgoingRequests.ExpectingAnyRequest() {
 			return
 		}
-		newCandidates = <-node.channelNodeLookup
-		// Investigate to why I have to recalculate the distances?
-		for i := 0; i < len(newCandidates); i++ {
-			newCandidates[i].CalcDistance(target)
-			node.kademliaServer.SendPingMessage(&(newCandidates[i]))
+		select {
+		case newCandidates := <-node.channelNodeLookup:
+			// Recieved response in allowed interval
+			for i := 0; i < len(newCandidates); i++ {
+				newCandidates[i].CalcDistance(target)
+				node.kademliaServer.SendPingMessage(&(newCandidates[i]))
+			}
+			// Only need to check head of list as list is ordered on arrival.
+			if !currentClosestNode.Less(&newCandidates[0]) {
+				// Got closer to target, update current closest and succesfull probes.
+				probedNoCloser = 0
+				currentClosestNode = newCandidates[0]
+			} else {
+				// No closer to target.
+				probedNoCloser++
+			}
+			currentCandidates.Append(newCandidates)
+			activeAlphaCalls--
+		case <-time.After(time.Second):
+			log.Println("Failed to recieve FIND_NODE response within time interval")
+			return
 		}
-		// Only need to check head of list as list is ordered on arrival.
-		if !currentClosestNode.Less(&newCandidates[0]) {
-			// Got closer to target, update current closest and succesfull probes.
-			probedNoCloser = 0
-			currentClosestNode = newCandidates[0]
-		} else {
-			// No closer to target.
-			probedNoCloser++
-		}
-		currentCandidates.Append(newCandidates)
-		activeAlphaCalls--
 	}
-}
-
-func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
-	node.NodeLookup(target)
 }
 
 /*
@@ -127,32 +139,27 @@ func (node *Kademlia) FindClosestContacts(target *KademliaID, count int) {
 func (node *Kademlia) LookupData(key KademliaID) string {
 	log.Println("LookupData command in kademlia.go called with key:")
 	log.Println(&key)
-	var val string
-	val = node.datastore.Get(key)
+	val := node.datastore.Get(key)
 	log.Printf("VAL is %s AFTER datastore GET with KEY %s", val, key.String())
 
 	if val != "" {
 		return val
-	} else {
-		node.NodeLookup(&key)
-
-		//Array with contacs
-		neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
-		log.Println("After neighbours in lookupdata")
-		// skicka till alla noder  fan yolo
-		// mao node lookup sendfinddata till alla du hittat
-		for i := 0; i < len(neighbours); i++ {
-			log.Printf("Forloop in LOOKUPDATA on lap: %d", i)
-			if !(neighbours[i].ID.Equals(node.routingTable.me.ID)) {
-				log.Printf("INSIDE if statement in LOOKUPDATA, KEY IS: %s", key.String())
-				go node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
-				log.Println("Trying to find data on node: " + (neighbours[i]).ID.String())
-			}
-		}
-
 	}
-	val2 := <-node.channelDataStore
-	return val2
+	node.NodeLookup(&key)
+	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
+
+	log.Println("After neighbours in lookupdata")
+	for i := 0; i < len(neighbours); i++ {
+		log.Printf("Forloop in LOOKUPDATA on lap: %d", i)
+		if !(neighbours[i].ID.Equals(node.routingTable.me.ID)) {
+			node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
+		} else {
+			log.Println("Got call to not run a SENDFINDDATAMESSAGE IN DAVID")
+		}
+	}
+
+	val = <-node.channelDataStore
+	return val
 }
 
 /*
@@ -171,26 +178,18 @@ func (node *Kademlia) StoreValue(data string) {
 	//contacts := kademlia.LookupContact((node.KademliaID)(str2B))
 	log.Println("Trying to store key: " + key.String())
 	node.NodeLookup(&key)
-	log.Println("Nodelookup complete, neighbour next")
-	//Array with contacs
 	neighbours := node.routingTable.FindClosestContacts(&key, K_VALUE)
-	//Loop through closest contacts and try storing on them.
 	for i := 0; i < len(neighbours); i++ {
-		storeStatus := make(chan bool)
-		go node.kademliaServer.SendStoreMessage(&(neighbours[i]), key, data, storeStatus)
-		select {
-		case <-storeStatus:
-			log.Println("Stored data on node: " + (neighbours[i]).ID.String())
-		case <-time.After(10 * time.Second):
-			log.Println("TOOK TOO LONG TIME!!")
+		if *neighbours[i].ID != *node.routingTable.me.ID {
+			node.kademliaServer.SendStoreMessage(&(neighbours[i]), key, data)
 		}
 	}
+
 }
 
 func Hash(data string) string {
 	sha1 := sha1.Sum([]byte(data))
 	key := hex.EncodeToString(sha1[:])
-
 	return key
 }
 
@@ -201,14 +200,16 @@ func (node *Kademlia) bootLoader(bootLoaderAddrs string, bootLoaderID KademliaID
 	bootContact := NewContact(&bootLoaderID, bootLoaderAddrs)
 	node.routingTable.AddContact(bootContact)
 	node.NodeLookup(node.routingTable.me.ID)
-
 }
 
 func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
-	log.Printf(("RECIEVED [%s] EVENT FROM [%s]:[%s]"), kademliaServerMsg.Method.String(), kademliaServerMsg.Caller.Address, kademliaServerMsg.Caller.ID)
-	if kademliaServerMsg.Caller.Address == node.routingTable.me.Address {
-		log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", kademliaServerMsg.Caller.ID)
-		return
+	if kademliaServerMsg.Method != 0 {
+
+		log.Printf(("[%s] RECIEVED [%s] EVENT FROM [%s]:[%s]"), node.routingTable.me.Address, kademliaServerMsg.Method.String(), kademliaServerMsg.Caller.Address, kademliaServerMsg.Caller.ID)
+		if kademliaServerMsg.Caller.Address == node.routingTable.me.Address {
+			log.Printf("SUSPECT CALLER [%s] REASON: IDENTICAL ADDRS AS SERVER", kademliaServerMsg.Caller.ID)
+			return
+		}
 	}
 
 	// Adding caller of any incoming request.
@@ -220,10 +221,12 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 		}
 	case FindNode:
 		// TODO Need to check that register is correctly incremented/decremented.
+
 		if kademliaServerMsg.Payload.Candidates == nil {
 			node.ReturnCandidates(&kademliaServerMsg.Caller, &kademliaServerMsg.Payload.FindNode)
 		} else {
 			if node.outgoingRequests.ExpectingRequest(*kademliaServerMsg.Caller.ID) {
+				// NOTE investigate docker compose behaviour - will block (other nodes from responding) until self terminates (socket errors?).
 				node.channelNodeLookup <- kademliaServerMsg.Payload.Candidates
 			} else {
 				log.Printf("SUSPECT CALLER [%s] REASON: UNEXPECTED FIND_NODE RESPONSE", kademliaServerMsg.Caller.ID)
@@ -262,8 +265,10 @@ func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
 		log.Println("INSERT CALL HERE TO GET VALUE FROM KEY:", key, " AND RETURN THE VALUE")
 		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM GET VALUE")
 	case "STORE_VALUE":
-		valueStore := apiRequest.ApiRequestPayload
-		log.Println("INSERT CALL HERE TO STORE VALUE OF:", valueStore, " AND RETURN THE KEY HASH FROM CREATED KEY VALUE")
+		valueToStore := apiRequest.ApiRequestPayload
+		log.Println("CALL TO STORE VALUE WITH VALUE:", valueToStore)
+		node.StoreValue(string(valueToStore))
+		log.Println("RETURNING FROM STORE VALUE")
 		apiRequest.ApiResponseChannel <- []byte("RESPONSE FROM STORE VALUE")
 	default:
 		log.Panic("RECIEVED INVALID API REQUEST METHOD FROM HTTP SERVER", apiRequest)

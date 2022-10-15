@@ -21,6 +21,24 @@ func (reg *OutgoingRegister) RegisterOutgoing(target KademliaID) {
 	reg.register[target] += 1
 }
 
+func (reg *OutgoingRegister) ResetRegister() {
+	reg.mutex.Lock()
+	defer reg.mutex.Unlock()
+	reg.register = make(map[KademliaID]int)
+
+}
+
+func (reg *OutgoingRegister) PrintRegister() {
+	reg.mutex.Lock()
+	defer reg.mutex.Unlock()
+	for key, num := range reg.register {
+		if num > 0 {
+			log.Println("CURRENTLY EXCEPTING RESPONSE FROM", key.String(), " - num responses:", num)
+		}
+	}
+
+}
+
 func (reg *OutgoingRegister) RegisterIncoming(target KademliaID) {
 	reg.mutex.Lock()
 	defer reg.mutex.Unlock()
