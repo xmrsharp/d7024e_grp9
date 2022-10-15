@@ -116,6 +116,7 @@ func (network *Network) SendFindDataMessage(to *Contact, key KademliaID) {
 	m := new(msg)
 	m.Method = FindValue
 	m.Caller = network.msgHeader
+	m.Payload.Key = key
 	m.Payload.Store.Key = key
 	log.Printf("SendFindDataMessage called with KEY: %s", key.String())
 	network.sendRequest(*m, *to)

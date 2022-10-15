@@ -128,6 +128,7 @@ func (node *Kademlia) LookupData(key KademliaID) string {
 	log.Println("LookupData command in kademlia.go called with key:")
 	log.Println(&key)
 	var val string
+	log.Printf("LOOKUPDATA calling GET with KEY: %s", key.String())
 	val = node.datastore.Get(key)
 	log.Printf("VAL is %s AFTER datastore GET with KEY %s", val, key.String())
 
@@ -230,12 +231,10 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 			}
 		}
 	case FindValue:
-		// TODO Handle inc find value event.
-		// key = msg.Payload.Key
-		// res = node.DataStoreTable.get(key)
-		// return res
+
 		if kademliaServerMsg.Payload.Value == "" {
 			//ngn vill hitta värdet
+			log.Printf("RPC FINDVALUE calling GET with KEY: %s", kademliaServerMsg.Payload.Key.String())
 			val := node.datastore.Get(kademliaServerMsg.Payload.Key)
 			if val != "" {
 				node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)

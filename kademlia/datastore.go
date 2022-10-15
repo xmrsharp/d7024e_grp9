@@ -25,6 +25,7 @@ func (data *DataStore) Get(key KademliaID) string {
 		log.Printf("GET in DATASTORE found VAL: %s", string(val))
 		return val
 	} else {
+		log.Printf("GET in DATASTORE didn't find VAL")
 		return ""
 	}
 }
