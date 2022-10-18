@@ -1,6 +1,9 @@
 package kademlia
 
-import "log"
+import (
+	"fmt"
+	"log"
+)
 
 type KademliaMap = map[KademliaID]string
 
@@ -13,10 +16,7 @@ func NewDataStore() DataStore {
 }
 
 func (data *DataStore) Insert(key KademliaID, val string) {
-	log.Printf("INSERT in DATASTORE called with KEY %s, VAL %s: ", key.String(), val)
-	//id := NewKademliaID(val)
 	data.data[key] = val
-	// data.PrintStore(data.data)
 }
 
 func (data *DataStore) KeyExist(key KademliaID) bool {
@@ -25,7 +25,6 @@ func (data *DataStore) KeyExist(key KademliaID) bool {
 }
 
 func (data *DataStore) Get(key KademliaID) string {
-	log.Printf("GET in DATASTORE called with KEY: %s", key.String())
 	if val, ok := data.data[key]; ok {
 		log.Printf("GET in DATASTORE found VAL: %s", string(val))
 		return val
@@ -35,9 +34,8 @@ func (data *DataStore) Get(key KademliaID) string {
 }
 
 func (data *DataStore) PrintStore(test KademliaMap) {
-	// loop over elements of slice
-	log.Printf("CURRENT DATASTORE:")
+	fmt.Println("CURRENT DATASTORE:")
 	for key, value := range data.data {
-		log.Printf("[%s]:[%s]", key, value)
+		fmt.Printf("[%s]:[%s]", key, value)
 	}
 }

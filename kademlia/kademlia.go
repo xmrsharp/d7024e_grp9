@@ -16,18 +16,19 @@ const (
 	K_VALUE     = 20
 )
 
+// TODO Discuss about changing go version from 1.13 -> 1.18
 // Logic and state of Kademlia node
 type Kademlia struct {
 	kademliaServer     *Network
 	apiServer          *api.APIServer
 	outgoingRequests   *OutgoingRegister
-	channelAPI         <-chan api.APIChannel
-	channelServerInput <-chan msg
-	channelNodeLookup  chan []Contact
-	channelStoreValue  chan KademliaID
-	routingTable       *RoutingTable
+	channelAPI         <-chan api.APIChannel // api channel.
+	channelServerInput <-chan msg            // kad node server channel.
+	channelNodeLookup  chan []Contact        // NodeLookup rpc
+	channelStoreValue  chan KademliaID       // Store channel rpc
+	channelValueLookup chan msg              // FindValue channel rpc
 	datastore          DataStore
-	channelDataStore   chan string
+	routingTable       *RoutingTable
 }
 
 func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kademlia {
@@ -36,6 +37,7 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 	channelServerInput := make(chan msg)
 	channelNodeLookup := make(chan []Contact)
 	channelStoreValue := make(chan KademliaID)
+	channelValueLookup := make(chan msg)
 
 	addrs := ip + ":" + strconv.Itoa(portKademlia)
 	outgoingRequests := NewOutgoingRegister()
@@ -47,7 +49,6 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 	apiServer := api.NewServer(ip, portAPI, channelAPI)
 
 	datastore := NewDataStore()
-	channelDataStore := make(chan string)
 
 	kademliaNode := Kademlia{kademliaServer: kademliaServer,
 		apiServer:          apiServer,
@@ -56,9 +57,9 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 		channelServerInput: channelServerInput,
 		channelNodeLookup:  channelNodeLookup,
 		channelStoreValue:  channelStoreValue,
+		channelValueLookup: channelValueLookup,
 		routingTable:       routingTable,
-		datastore:          datastore,
-		channelDataStore:   channelDataStore}
+		datastore:          datastore}
 	return &kademliaNode
 }
 
@@ -68,13 +69,11 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 }
 
 func (node *Kademlia) NodeLookup(target *KademliaID) {
-	// Draining stale responses from channel (NOTE WIP)
-	// Should not drain right?
 	func(drain chan []Contact) {
 		for {
 			select {
 			case _ = <-drain:
-				log.Println("REMOVED STALE FIND_NODE RESPONSE:")
+				log.Println("REMOVED STALE FIND_NODE RESPONSE")
 			default:
 				return
 			}
@@ -139,38 +138,49 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 	}
 }
 
-/*
-	 	Check that the hash is valid
-	 	Check if the data is found on this node
-		Send request to look for the data on other nodes
-			NodeLookup (key = target)
-			Send request to all contacts found in the lookup.
-*/
-func (node *Kademlia) LookupData(key KademliaID) string {
-	// Repeat what post does ->
-	log.Println("LookupData command in kademlia.go called with key:")
-	log.Println(&key)
+func (node *Kademlia) LookupData(key KademliaID) Result {
 	val := node.datastore.Get(key)
-	log.Printf("VAL is %s AFTER datastore GET with KEY %s", val, key.String())
-
+	var response Result
 	if val != "" {
-		return val
+		response.ID = *node.routingTable.me.ID
+		response.Value = val
+		return response // Works, meaning found value in local node.
 	}
+
+	// Refresh any previously stored values in pipe.
+	func() {
+		for {
+			select {
+			case _ = <-node.channelValueLookup:
+				log.Println("STALE GET VALUE FLUSHED")
+			default:
+				return
+			}
+		}
+	}()
 	node.NodeLookup(&key)
 	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
-
-	log.Println("After neighbours in lookupdata")
 	for i := 0; i < len(neighbours); i++ {
-		log.Printf("Forloop in LOOKUPDATA on lap: %d", i)
-		if !(neighbours[i].ID.Equals(node.routingTable.me.ID)) {
+		if *neighbours[i].ID != *node.routingTable.me.ID {
 			node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
-		} else {
-			log.Println("Got call to not run a SENDFINDDATAMESSAGE IN DAVID")
 		}
 	}
 
-	val = <-node.channelDataStore
-	return val
+	var responseAck Result
+	for {
+		select {
+		case valueConfirmation := <-node.channelValueLookup:
+			proposedValue := valueConfirmation.Payload.FindValue.Value
+			if NewKademliaID(&proposedValue) == key {
+				responseAck.ID = *valueConfirmation.Caller.ID
+				responseAck.Value = proposedValue
+				return responseAck
+			}
+		case <-time.After(3 * time.Second):
+			responseAck.Err = errors.New("Failed to fetch value of key")
+			return responseAck
+		}
+	}
 }
 
 func (node *Kademlia) StoreValue(data string) Result {
@@ -181,15 +191,18 @@ func (node *Kademlia) StoreValue(data string) Result {
 		for {
 			select {
 			case _ = <-node.channelStoreValue:
-				log.Println("STALE STORE ACK FLUSEHD")
+				log.Println("STALE STORE ACK FLUSHED")
 			default:
 				return
 			}
 		}
 	}()
+
 	node.NodeLookup(&key)
 	storeCandidates := node.routingTable.FindClosestContacts(&key, K_VALUE)
-	for i := 0; i < len(storeCandidates); i++ {
+	// NOTE 2 For testing purposes
+	//for i := 0; i < len(storeCandidates); i++ {
+	for i := 0; i < 2; i++ {
 		if *storeCandidates[i].ID != *node.routingTable.me.ID {
 			node.kademliaServer.SendStoreMessage(&(storeCandidates[i]), key, data)
 		}
@@ -199,8 +212,6 @@ func (node *Kademlia) StoreValue(data string) Result {
 	for {
 		select {
 		case keyConfirmation := <-node.channelStoreValue:
-			log.Println("RECIEVED KEY:", keyConfirmation)
-			log.Println("SAME=?:", keyConfirmation == key)
 			if keyConfirmation == key {
 				responseAck.ID = key
 				return responseAck
@@ -237,7 +248,7 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 	switch kademliaServerMsg.Method {
 	case Ping:
 		if kademliaServerMsg.Payload.PingPong == "PING" {
-			node.kademliaServer.SendPongMessage(&kademliaServerMsg.Caller)
+			node.kademliaServer.respondPingMessage(&kademliaServerMsg.Caller)
 		}
 	case FindNode:
 		go func() {
@@ -254,13 +265,15 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 		}()
 	case FindValue:
 		go func() {
-			if kademliaServerMsg.Payload.Value == "" {
-				val := node.datastore.Get(kademliaServerMsg.Payload.Key)
+			if kademliaServerMsg.Payload.FindValue.Value == "" {
+				// Call to search for value in own datastore
+				val := node.datastore.Get(kademliaServerMsg.Payload.FindValue.Key)
 				if val != "" {
-					node.kademliaServer.SendReturnDataMessage(&kademliaServerMsg.Caller, val)
+					node.kademliaServer.respondFindDataMessage(&kademliaServerMsg.Caller, val)
 				}
 			} else {
-				node.channelDataStore <- kademliaServerMsg.Payload.Value
+				// Response from other node of value.
+				node.channelValueLookup <- kademliaServerMsg
 			}
 		}()
 	case Store:
@@ -283,30 +296,40 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 }
 
 func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
+	var res *Result
 	switch apiRequest.ApiRequestMethod {
 	case "GET_VALUE":
 		key := apiRequest.ApiRequestPayload
+		var id KademliaID
+		for i := 0; i < 20; i++ {
+			id[i] = key[i]
+		}
+		log.Println("LOOKING UP KEY: ", id)
+		*res = node.LookupData(id)
+		log.Println("GET_VALUE: RECIEVED:", *res)
 		log.Println("INSERT CALL HERE TO GET VALUE FROM KEY:", key, " AND RETURN THE VALUE")
 	case "STORE_VALUE":
 		valueToStore := apiRequest.ApiRequestPayload
-		res := node.StoreValue(string(valueToStore))
-		log.Println("RECIEVED:", res)
-		go func() {
-			if res.IsError() {
-				log.Println("STORE_VALUE API ERROR")
-				apiRequest.ApiResponseChannel <- []byte("ERROR")
-			} else {
-				apiRequest.ApiResponseChannel <- []byte(res.ID.String() + " - " + res.Value)
-			}
-		}()
+		*res = node.StoreValue(string(valueToStore))
+		log.Println("STORE_VALUE RECIEVED::", *res)
 	default:
 		log.Panic("RECIEVED INVALID API REQUEST METHOD FROM HTTP SERVER", apiRequest)
 
 	}
-
+	go func(res Result, method string, resp chan []byte) {
+		log.Println("AND RES IN GO ROUTINE IS :", res)
+		if res.IsError() {
+			log.Println("ERROR:", method)
+			log.Println(res)
+			resp <- []byte("ERROR")
+			return
+		}
+		resp <- []byte(res.ID.String() + " - " + res.Value)
+	}(*res, apiRequest.ApiRequestMethod, apiRequest.ApiResponseChannel)
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
+	// ERROR IF BOOT LOADER SOMEHOW STARTS BEFORE NETWORK.
 	go node.kademliaServer.Listen()
 	go node.apiServer.Listen()
 	go node.bootLoader(bootLoaderAddrs, bootLoaderID)

@@ -3,7 +3,6 @@ package kademlia
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 )
 
@@ -28,24 +27,21 @@ func Commands(output io.Writer, node *Kademlia, commands []string) {
 	}
 }
 
-// TODO PUT is currently being treated as POST - not idempotent.
 func Put(node *Kademlia, input string) {
-	//str2B := []byte(input)
-
 	res := node.StoreValue(input)
-	log.Println("RECIEVED RES : ", res)
-	//fmt.Println("Hash is: ", str2B)
-}
-func Get(node *Kademlia, hash string) {
-	//str2B := []byte(hash)
-	key := NewKademliaID(&hash)
-	value := node.LookupData(key)
-	fmt.Printf("GET CALLED WITH KEY: %s", key.String())
-	stringValue := string(value[:])
-	fmt.Println("STRINGVALUE IS: " + stringValue)
-	if stringValue == "" {
-		fmt.Println("Couldn't find requested value")
+	if res.IsError() {
+		fmt.Printf(("FAIL STORE VALUE [%s]"), input)
 	} else {
-		fmt.Println("Value found: ", stringValue, " In node: ", key.String())
+		fmt.Printf("VALUE STORED\n\tVALUE:[%s]\n\tKEY:[%s]", input, res.ID.String())
 	}
+}
+func Get(node *Kademlia, value string) {
+	key := NewKademliaID(&value)
+	res := node.LookupData(key)
+	if res.IsError() {
+		fmt.Printf(("DID NOT FIND VALUE [%s]."), value)
+	} else {
+		fmt.Printf(("FOUND VALUE\n\tNODE:[%s]\n\tKEY:[%s]\n\tVALUE:[%s]\n"), res.ID.String(), key.String(), res.Value)
+	}
+
 }

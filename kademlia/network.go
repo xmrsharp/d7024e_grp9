@@ -27,7 +27,7 @@ func (network *Network) Listen() {
 	if err != nil {
 		log.Println(err)
 	}
-	log.Println("SERVING ON:", network.addrs)
+	log.Println("KAD NODE SERVING ON:", network.addrs)
 	defer serverSocket.Close()
 	for {
 		// Change size of reader.
@@ -73,7 +73,7 @@ func (network *Network) sendRequest(m msg, to Contact) {
 	}
 }
 
-func (network *Network) SendPongMessage(to *Contact) {
+func (network *Network) respondPingMessage(to *Contact) {
 	m := new(msg)
 	m.Method = Ping
 	m.Caller = network.msgHeader
@@ -104,20 +104,19 @@ func (network *Network) SendFindContactMessage(to *Contact, target KademliaID) {
 	network.sendRequest(*m, *to)
 }
 
-// Return wrapper of contact lists or data.
+func (network *Network) respondFindDataMessage(to *Contact, data string) {
+	m := new(msg)
+	m.Method = FindValue
+	m.Caller = network.msgHeader
+	m.Payload.FindValue.Value = data
+	network.sendRequest(*m, *to)
+}
+
 func (network *Network) SendFindDataMessage(to *Contact, key KademliaID) {
 	m := new(msg)
 	m.Method = FindValue
 	m.Caller = network.msgHeader
-	m.Payload.Store.Key = key
-	log.Printf("SendFindDataMessage called with STORE.KEY: %s", key.String())
-	network.sendRequest(*m, *to)
-}
-func (network *Network) SendReturnDataMessage(to *Contact, data string) {
-	m := new(msg)
-	m.Method = FindValue
-	m.Caller = network.msgHeader
-	m.Payload.Value = data
+	m.Payload.FindValue.Key = key
 	network.sendRequest(*m, *to)
 }
 

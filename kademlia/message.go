@@ -14,7 +14,8 @@ type msg struct {
 
 type content struct {
 	PingPong   string     // Simply calling it for face value, ping pong.
-	Key        KademliaID // FindValue: key.
+	FindValue  Tuple      // To be used for find value.
+	Key        KademliaID // FindValue: key. Ok why use both values here?? TODO REPLACE KEY VALUE with FindValue Tuple instead.
 	Value      string     // FindValue: value.
 	Store      Tuple      // Store: Key, Value
 	Candidates []Contact  // Store/FindNode/FindValue candidates if not found.
