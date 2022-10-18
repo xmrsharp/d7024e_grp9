@@ -329,10 +329,13 @@ func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
-	// ERROR IF BOOT LOADER SOMEHOW STARTS BEFORE NETWORK.
 	go node.kademliaServer.Listen()
 	go node.apiServer.Listen()
-	go node.bootLoader(bootLoaderAddrs, bootLoaderID)
+	go func() {
+		// TODO Quick fix for bootloader.
+		time.Sleep(time.Second)
+		node.bootLoader(bootLoaderAddrs, bootLoaderID)
+	}()
 	go Cli(os.Stdout, node)
 	for {
 		select {
