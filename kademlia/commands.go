@@ -3,6 +3,7 @@ package kademlia
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 )
 
@@ -27,9 +28,12 @@ func Commands(output io.Writer, node *Kademlia, commands []string) {
 	}
 }
 
+// TODO PUT is currently being treated as POST - not idempotent.
 func Put(node *Kademlia, input string) {
 	//str2B := []byte(input)
-	node.StoreValue(input)
+
+	res := node.StoreValue(input)
+	log.Println("RECIEVED RES : ", res)
 	//fmt.Println("Hash is: ", str2B)
 }
 func Get(node *Kademlia, hash string) {

@@ -16,7 +16,12 @@ func (data *DataStore) Insert(key KademliaID, val string) {
 	log.Printf("INSERT in DATASTORE called with KEY %s, VAL %s: ", key.String(), val)
 	//id := NewKademliaID(val)
 	data.data[key] = val
-	data.PrintStore(data.data)
+	// data.PrintStore(data.data)
+}
+
+func (data *DataStore) KeyExist(key KademliaID) bool {
+	_, ok := data.data[key]
+	return ok
 }
 
 func (data *DataStore) Get(key KademliaID) string {
@@ -32,12 +37,7 @@ func (data *DataStore) Get(key KademliaID) string {
 func (data *DataStore) PrintStore(test KademliaMap) {
 	// loop over elements of slice
 	log.Printf("CURRENT DATASTORE:")
-	for _, m := range test {
-
-		// m is a map[string]interface.
-		// loop over keys and values in the map.
-		for k, v := range m {
-			log.Println(k, "value is", v)
-		}
+	for key, value := range data.data {
+		log.Printf("[%s]:[%s]", key, value)
 	}
 }

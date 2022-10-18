@@ -12,8 +12,9 @@ import (
 // TODO Upd request method similar to message to not hardcode values.
 type APIChannel struct {
 	ApiResponseChannel chan []byte
-	ApiRequestMethod   string
-	ApiRequestPayload  []byte
+	//ApiRequestMethod   result.Result
+	ApiRequestMethod  string
+	ApiRequestPayload []byte
 }
 
 type APIServer struct {
