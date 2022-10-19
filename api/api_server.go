@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -51,7 +51,7 @@ type getObjectResponse struct {
 // Return body of created object with location header of location.
 func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 	// Read value to save.
-	storeValue, _ := io.ReadAll(r.Body)
+	storeValue, _ := ioutil.ReadAll(r.Body)
 
 	if r.Method != "POST" || len(storeValue) == 0 {
 		w.WriteHeader(http.StatusBadRequest)

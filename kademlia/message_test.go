@@ -2,7 +2,7 @@ package kademlia
 
 import "testing"
 
-func TestEncodeDecode(t *testing.T) {
+/* func TestEncodeDecode(t *testing.T) {
 	test_msg := msg{Ping, "PAYLOAD"}
 	expected_msg := msg{Ping, "PAYLOAD"}
 	// Encode msg.
@@ -12,4 +12,4 @@ func TestEncodeDecode(t *testing.T) {
 	if returned_msg != expected_msg {
 		t.Errorf("Encode and decode should be inverses")
 	}
-}
+} */
