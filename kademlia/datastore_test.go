@@ -23,3 +23,21 @@ func TestGetInsert(t *testing.T) {
 	assert.Equal(t, data.Get(NewKademliaID(&val)), "")
 
 }
+
+func TestKeyExist(t *testing.T) {
+	data := NewDataStore()
+	val := "testar"
+	key := NewKademliaID(&val)
+	exist := data.KeyExist(key)
+	assert.Equal(t, exist, false)
+}
+
+func TestPrintStore(t *testing.T) {
+	data := NewDataStore()
+	val := "testar"
+	key := NewKademliaID(&val)
+	log.Println("Inserting value (calling insert)")
+	data.Insert(key, val)
+	log.Printf("Test print store %s", data.data)
+	data.PrintStore(data.data)
+}

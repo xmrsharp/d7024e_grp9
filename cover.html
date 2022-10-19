@@ -62,7 +62,7 @@
 				
 				<option value="file3">D7024E_GRP9/kademlia/contact.go (6.2%)</option>
 				
-				<option value="file4">D7024E_GRP9/kademlia/datastore.go (54.5%)</option>
+				<option value="file4">D7024E_GRP9/kademlia/datastore.go (100.0%)</option>
 				
 				<option value="file5">D7024E_GRP9/kademlia/kademlia.go (8.3%)</option>
 				
@@ -341,7 +341,7 @@ func (data *DataStore) Insert(key KademliaID, val string) <span class="cov8" tit
         data.data[key] = val
 }</span>
 
-func (data *DataStore) KeyExist(key KademliaID) bool <span class="cov0" title="0">{
+func (data *DataStore) KeyExist(key KademliaID) bool <span class="cov8" title="1">{
         _, ok := data.data[key]
         return ok
 }</span>
@@ -355,9 +355,9 @@ func (data *DataStore) Get(key KademliaID) string <span class="cov8" title="1">{
         }</span>
 }
 
-func (data *DataStore) PrintStore(test KademliaMap) <span class="cov0" title="0">{
+func (data *DataStore) PrintStore(test KademliaMap) <span class="cov8" title="1">{
         fmt.Println("CURRENT DATASTORE:")
-        for key, value := range data.data </span><span class="cov0" title="0">{
+        for key, value := range data.data </span><span class="cov8" title="1">{
                 fmt.Printf("[%s]:[%s]", key, value)
         }</span>
 }
