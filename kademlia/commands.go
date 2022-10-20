@@ -3,7 +3,12 @@ package kademlia
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
+)
+
+const (
+	KEY_STRING_LENGTH = 40
 )
 
 func Commands(output io.Writer, node *Kademlia, commands []string) {
@@ -35,13 +40,17 @@ func Put(node *Kademlia, input string) {
 		fmt.Printf("VALUE STORED\n\tVALUE:[%s]\n\tKEY:[%s]", input, res.ID.String())
 	}
 }
-func Get(node *Kademlia, value string) {
-	key := NewKademliaID(&value)
-	res := node.LookupData(key)
+func Get(node *Kademlia, keyString string) {
+	if len(keyString) != KEY_STRING_LENGTH {
+		log.Printf(("DID NOT FIND VALUE RELATED TO KEY [%s]."), keyString)
+		return
+	}
+	key := NewKademliaIDString(keyString)
+	res := node.LookupData(*key)
 	if res.IsError() {
-		fmt.Printf(("DID NOT FIND VALUE [%s]."), value)
+		fmt.Printf(("DID NOT FIND VALUE RELATED TO KEY [%s]."), keyString)
 	} else {
-		fmt.Printf(("FOUND VALUE\n\tNODE:[%s]\n\tKEY:[%s]\n\tVALUE:[%s]\n"), res.ID.String(), key.String(), res.Value)
+		fmt.Printf(("FOUND VALUE\n\tNODE:[%s]\n\tKEY:[%s]\n\tVALUE:[%s]\n"), res.ID.String(), keyString, res.Value)
 	}
 
 }
