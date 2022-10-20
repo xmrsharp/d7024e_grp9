@@ -268,7 +268,6 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 	case FindValue:
 		go func() {
 			if kademliaServerMsg.Payload.FindValue.Value == "" {
-				log.Println("GOT CALL TO FIND KEY:", kademliaServerMsg.Payload.FindValue.Key)
 				// Call to search for value in own datastore
 				val := node.datastore.Get(kademliaServerMsg.Payload.FindValue.Key)
 				if val != "" {
@@ -303,9 +302,7 @@ func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
 	switch apiRequest.ApiRequestMethod {
 	case "GET_VALUE":
 		key := NewKademliaIDString(string(apiRequest.ApiRequestPayload))
-		log.Println("TRYING TO LOOKUP:", key)
 		res = node.LookupData(*key)
-		log.Println("GO RES:", res)
 		go res.respondApiServer(apiRequest.ApiRequestMethod, apiRequest.ApiResponseChannel)
 	case "STORE_VALUE":
 		valueToStore := apiRequest.ApiRequestPayload

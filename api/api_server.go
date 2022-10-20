@@ -10,15 +10,15 @@ import (
 )
 
 const (
-	KEY_STRING_LENGTH = 40
+	KEY_STRING_LENGTH  = 40
+	ERROR_STRING_VALUE = "ERROR"
 )
 
 // TODO Upd request method similar to message to not hardcode values.
 type APIChannel struct {
 	ApiResponseChannel chan []byte
-	//ApiRequestMethod   result.Result
-	ApiRequestMethod  string
-	ApiRequestPayload []byte
+	ApiRequestMethod   string
+	ApiRequestPayload  []byte
 }
 
 type APIServer struct {
@@ -49,20 +49,23 @@ func (as *APIServer) Listen() {
 
 type getObjectResponse struct {
 	Value string `json:Value`
+	Key   string `json:Key`
 }
 
 func parseNodeResponse(resp []byte) (string, string) {
-	respString := strings.Split(string(resp), " - ")
-	return respString[0], respString[1]
+	respString := string(resp)
+	if respString == ERROR_STRING_VALUE {
+		return ERROR_STRING_VALUE, ERROR_STRING_VALUE
+	}
+	respValues := strings.Split(respString, " - ")
+	return respValues[0], respValues[1]
 }
 
 // POST /objects - create object in http body
 // Return body of created object with location header of location.
 func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
-	log.Println("RECIEVED POST REQUEST")
 	// Read value to save.
 	storeValue, _ := ioutil.ReadAll(r.Body)
-	log.Println("STOREVALUE:", storeValue)
 	if r.Method != "POST" || len(storeValue) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -77,9 +80,9 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 	// Write msg to node.
 	as.channelNode <- nodeChannelMsg
 	// Await response in wrapped channel
-	nodeResp := <-nodeChannelMsg.ApiResponseChannel
-	key, _ := parseNodeResponse(nodeResp)
-	if len(key) != KEY_STRING_LENGTH {
+	nodeRsp := <-nodeChannelMsg.ApiResponseChannel
+	key, _ := parseNodeResponse(nodeRsp)
+	if len(key) != KEY_STRING_LENGTH || key == ERROR_STRING_VALUE {
 		// Somehow got a bad response from node network.
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -91,18 +94,15 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 	w.Write(storeValue)
 }
 
-// GET /objects/{hash} - simply return with body of the key (basically hash is key).
 // RESPOND WITH 200 - "hash: value"
 // NOTE /objects/{hash} : GET value of hash if exist.
 func (as *APIServer) getObject(w http.ResponseWriter, r *http.Request) {
-	log.Println("RECIEVED GET REQUEST")
-	// NOTE This is will always work as long as /objects will be taken by other endpoint
-	// That being said, do not try this at home
+
 	hashString := strings.Split(r.URL.String(), "/")[2]
 	hash := []byte(hashString)
+
 	// NOTE Hardcoded 20 byte value for byte id size.
 	if r.Method != "GET" || len(hash) != KEY_STRING_LENGTH {
-		log.Println("BAD REQUEST")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -115,18 +115,20 @@ func (as *APIServer) getObject(w http.ResponseWriter, r *http.Request) {
 	// Write msg to node.
 	as.channelNode <- nodeChannelMsg
 	// Await response in wrapped channel
-	keyValue := <-nodeChannelMsg.ApiResponseChannel
-	if len(keyValue) == 0 {
+	nodeRsp := <-nodeChannelMsg.ApiResponseChannel
+	key, val := parseNodeResponse(nodeRsp)
+	if len(key) != KEY_STRING_LENGTH || key == ERROR_STRING_VALUE {
 		// Failed to get hash value.
 		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 	// TODO: Make sure storevalue and findnode are valid.
-	log.Println("RECIEVED RESP:", keyValue)
+	log.Println("RECIEVED RESP:", key, val)
 
 	// Return response to caller.
 	w.Header().Set("Content-Type", "application/json")
 	// TODO Replace when node functions tested and done.
-	body := getObjectResponse{Value: "TODO REPLACE WHEN FIND VALUE IS IMPLEMENTED IN NODE."}
+	body := getObjectResponse{Key: key, Value: val}
 	json.NewEncoder(w).Encode(body)
 
 }
