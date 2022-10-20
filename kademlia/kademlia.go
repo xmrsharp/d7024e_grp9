@@ -59,7 +59,8 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 		channelStoreValue:  channelStoreValue,
 		channelValueLookup: channelValueLookup,
 		routingTable:       routingTable,
-		datastore:          datastore}
+		datastore:          datastore,
+	}
 	return &kademliaNode
 }
 
@@ -69,16 +70,16 @@ func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
 }
 
 func (node *Kademlia) NodeLookup(target *KademliaID) {
-	func(drain chan []Contact) {
+	func() {
 		for {
 			select {
-			case _ = <-drain:
+			case _ = <-node.channelNodeLookup:
 				log.Println("REMOVED STALE FIND_NODE RESPONSE")
 			default:
 				return
 			}
 		}
-	}(node.channelNodeLookup)
+	}()
 
 	// Clean out any straglers from incoming requests that have not responded within a set amount of time.
 	defer node.outgoingRequests.ResetRegister()
@@ -139,7 +140,9 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 }
 
 func (node *Kademlia) LookupData(key KademliaID) Result {
+	log.Println("LOOKUP DATA:", key)
 	val := node.datastore.Get(key)
+
 	var response Result
 	if val != "" {
 		response.ID = *node.routingTable.me.ID
@@ -197,7 +200,6 @@ func (node *Kademlia) StoreValue(data string) Result {
 			}
 		}
 	}()
-
 	node.NodeLookup(&key)
 	storeCandidates := node.routingTable.FindClosestContacts(&key, K_VALUE)
 	// NOTE 2 For testing purposes
@@ -266,6 +268,7 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 	case FindValue:
 		go func() {
 			if kademliaServerMsg.Payload.FindValue.Value == "" {
+				log.Println("GOT CALL TO FIND KEY:", kademliaServerMsg.Payload.FindValue.Key)
 				// Call to search for value in own datastore
 				val := node.datastore.Get(kademliaServerMsg.Payload.FindValue.Key)
 				if val != "" {
@@ -296,51 +299,47 @@ func (node *Kademlia) handleIncomingRPC(kademliaServerMsg msg) {
 }
 
 func (node *Kademlia) handleIncomingAPIRequest(apiRequest api.APIChannel) {
-	var res *Result
+	var res Result
 	switch apiRequest.ApiRequestMethod {
 	case "GET_VALUE":
-		key := apiRequest.ApiRequestPayload
-		var id KademliaID
-		for i := 0; i < 20; i++ {
-			id[i] = key[i]
-		}
-		log.Println("LOOKING UP KEY: ", id)
-		*res = node.LookupData(id)
-		log.Println("GET_VALUE: RECIEVED:", *res)
-		log.Println("INSERT CALL HERE TO GET VALUE FROM KEY:", key, " AND RETURN THE VALUE")
+		key := NewKademliaIDString(string(apiRequest.ApiRequestPayload))
+		log.Println("TRYING TO LOOKUP:", key)
+		res = node.LookupData(*key)
+		log.Println("GO RES:", res)
+		go res.respondApiServer(apiRequest.ApiRequestMethod, apiRequest.ApiResponseChannel)
 	case "STORE_VALUE":
 		valueToStore := apiRequest.ApiRequestPayload
-		*res = node.StoreValue(string(valueToStore))
-		log.Println("STORE_VALUE RECIEVED::", *res)
+		res = node.StoreValue(string(valueToStore))
+		go res.respondApiServer(apiRequest.ApiRequestMethod, apiRequest.ApiResponseChannel)
 	default:
-		log.Panic("RECIEVED INVALID API REQUEST METHOD FROM HTTP SERVER", apiRequest)
+		log.Panic("RECIEVED INVALID API REQUEST METHOD", apiRequest)
 
 	}
-	go func(res Result, method string, resp chan []byte) {
-		log.Println("AND RES IN GO ROUTINE IS :", res)
-		if res.IsError() {
-			log.Println("ERROR:", method)
-			log.Println(res)
-			resp <- []byte("ERROR")
-			return
-		}
-		resp <- []byte(res.ID.String() + " - " + res.Value)
-	}(*res, apiRequest.ApiRequestMethod, apiRequest.ApiResponseChannel)
+}
+
+func (r *Result) respondApiServer(method string, c chan []byte) {
+	if r.IsError() {
+		log.Printf(("ERROR: [%s]"), r.Err)
+		c <- []byte("ERROR")
+		return
+	}
+	test := r.ID.String() + " - " + r.Value
+	c <- []byte(test)
 }
 
 func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
-	go node.kademliaServer.Listen()
-	go node.apiServer.Listen()
 	go func() {
-		// TODO Quick fix for bootloader.
+		// quick fix
 		time.Sleep(time.Second)
 		node.bootLoader(bootLoaderAddrs, bootLoaderID)
 	}()
+	go node.kademliaServer.Listen()
+	go node.apiServer.Listen()
 	go Cli(os.Stdout, node)
 	for {
 		select {
 		case apiRequest := <-node.channelAPI:
-			node.handleIncomingAPIRequest(apiRequest)
+			go node.handleIncomingAPIRequest(apiRequest)
 		case kademliaServerMsg := <-node.channelServerInput:
 			node.handleIncomingRPC(kademliaServerMsg)
 		}

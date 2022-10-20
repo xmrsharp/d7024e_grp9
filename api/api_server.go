@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+const (
+	KEY_STRING_LENGTH = 40
+)
+
 // TODO Upd request method similar to message to not hardcode values.
 type APIChannel struct {
 	ApiResponseChannel chan []byte
@@ -47,12 +51,18 @@ type getObjectResponse struct {
 	Value string `json:Value`
 }
 
+func parseNodeResponse(resp []byte) (string, string) {
+	respString := strings.Split(string(resp), " - ")
+	return respString[0], respString[1]
+}
+
 // POST /objects - create object in http body
 // Return body of created object with location header of location.
 func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
+	log.Println("RECIEVED POST REQUEST")
 	// Read value to save.
 	storeValue, _ := ioutil.ReadAll(r.Body)
-
+	log.Println("STOREVALUE:", storeValue)
 	if r.Method != "POST" || len(storeValue) == 0 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -67,18 +77,16 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 	// Write msg to node.
 	as.channelNode <- nodeChannelMsg
 	// Await response in wrapped channel
-	key := <-nodeChannelMsg.ApiResponseChannel
-	if len(key) != 20 {
-		log.Println("TODO MAKE SURE THIS WORKS WHEN CREATE NODE IMPLEMENTED.")
-		// Failed to store value.
+	nodeResp := <-nodeChannelMsg.ApiResponseChannel
+	key, _ := parseNodeResponse(nodeResp)
+	if len(key) != KEY_STRING_LENGTH {
+		// Somehow got a bad response from node network.
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// TODO Remove when making sure calls to create node and get node are working.
-	log.Println("RECIEVED RESP:", key)
 
 	// Return response to caller
-	w.Header().Add("Location", "/objects/"+string(key[:]))
+	w.Header().Add("Location", "/objects/"+key)
 	w.WriteHeader(http.StatusCreated)
 	w.Write(storeValue)
 }
@@ -87,13 +95,14 @@ func (as *APIServer) postObject(w http.ResponseWriter, r *http.Request) {
 // RESPOND WITH 200 - "hash: value"
 // NOTE /objects/{hash} : GET value of hash if exist.
 func (as *APIServer) getObject(w http.ResponseWriter, r *http.Request) {
+	log.Println("RECIEVED GET REQUEST")
 	// NOTE This is will always work as long as /objects will be taken by other endpoint
 	// That being said, do not try this at home
 	hashString := strings.Split(r.URL.String(), "/")[2]
 	hash := []byte(hashString)
-
 	// NOTE Hardcoded 20 byte value for byte id size.
-	if r.Method != "GET" || len(hash) != 20 {
+	if r.Method != "GET" || len(hash) != KEY_STRING_LENGTH {
+		log.Println("BAD REQUEST")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
