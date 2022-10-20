@@ -3,7 +3,6 @@ package kademlia
 import (
 	"D7024E_GRP9/api"
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -13,7 +12,7 @@ import (
 // TODO Address constant value missuse
 const (
 	ALPHA_VALUE = 3
-	K_VALUE     = 20
+	K_VALUE     = BucketSize
 )
 
 // TODO Discuss about changing go version from 1.13 -> 1.18
@@ -65,7 +64,7 @@ func NewKademlia(ip string, portKademlia int, portAPI int, id *KademliaID) *Kade
 }
 
 func (node *Kademlia) ReturnCandidates(caller *Contact, target *KademliaID) {
-	candidates := node.routingTable.FindClosestContacts(target, 20)
+	candidates := node.routingTable.FindClosestContacts(target, K_VALUE)
 	node.kademliaServer.respondFindContactMessage(caller, candidates)
 }
 
@@ -84,7 +83,7 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 	// Clean out any straglers from incoming requests that have not responded within a set amount of time.
 	defer node.outgoingRequests.ResetRegister()
 	// Initiate candidates.
-	currentCandidates := ContactCandidates{node.routingTable.FindClosestContacts(target, BucketSize)}
+	currentCandidates := ContactCandidates{node.routingTable.FindClosestContacts(target, K_VALUE)}
 
 	// Inititate end condition.
 	currentClosestNode := currentCandidates.GetClosest()
@@ -140,7 +139,6 @@ func (node *Kademlia) NodeLookup(target *KademliaID) {
 }
 
 func (node *Kademlia) LookupData(key KademliaID) Result {
-	log.Println("LOOKUP DATA:", key)
 	val := node.datastore.Get(key)
 
 	var response Result
@@ -162,7 +160,7 @@ func (node *Kademlia) LookupData(key KademliaID) Result {
 		}
 	}()
 	node.NodeLookup(&key)
-	neighbours := node.routingTable.FindClosestContacts(&key, BucketSize)
+	neighbours := node.routingTable.FindClosestContacts(&key, K_VALUE)
 	for i := 0; i < len(neighbours); i++ {
 		if *neighbours[i].ID != *node.routingTable.me.ID {
 			node.kademliaServer.SendFindDataMessage(&(neighbours[i]), key)
@@ -341,19 +339,4 @@ func (node *Kademlia) Run(bootLoaderAddrs string, bootLoaderID KademliaID) {
 			node.handleIncomingRPC(kademliaServerMsg)
 		}
 	}
-}
-
-// NOTE ONLY TO BE USED FOR TESTING/DEMONSTRATION PURPOSES ONLY
-func (node *Kademlia) genCheckBuckets() {
-	count := 0
-	for i := 0; i < 20; i++ {
-		//num_entries := node.routingTable.buckets[i].Len()
-		// fmt.Println("BUCKET:", i, " Contains ", num_entries, " number of entries.")
-		for j := node.routingTable.buckets[i].list.Front(); j != nil; j = j.Next() {
-			// NOTE If individual number of entries are to be inspected.
-			//fmt.Println("V:", j.Value)
-			count++
-		}
-	}
-	fmt.Println("TOTAL NUMBER OF UNIQUE ENTRIES : ", count)
 }

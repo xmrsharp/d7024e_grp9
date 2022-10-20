@@ -29,7 +29,6 @@ func GetOutboundIP() net.IP {
 
 func main() {
 	nodeIp := GetOutboundIP().String()
-	//nodeIp := "127.0.0.1"
 
 	BootLoaderId := kademlia.NewKademliaIDString(BOOT_LOADER_STRING)
 	if nodeIp == BOOT_LOADER_IP {

@@ -6,6 +6,7 @@ import (
 	"log"
 )
 
+// TODO Refactor msg name to packet.
 type msg struct {
 	Method  RPCMethod
 	Caller  Contact // Will need an address of where to respond to as each instance is only keeping an open port.

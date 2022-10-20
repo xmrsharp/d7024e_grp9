@@ -12,6 +12,10 @@ type Network struct {
 	channelWriteNode chan<- msg
 }
 
+const (
+	PACKET_BYTE_SIZE = 8192
+)
+
 func NewNetwork(msgHeader Contact, addrs string, outgoingRequests *OutgoingRegister, write chan<- msg) *Network {
 	udpAddr, err := net.ResolveUDPAddr("udp", addrs)
 	if err != nil {
@@ -31,7 +35,7 @@ func (network *Network) Listen() {
 	defer serverSocket.Close()
 	for {
 		// Change size of reader.
-		buff := make([]byte, 16384)
+		buff := make([]byte, PACKET_BYTE_SIZE)
 		n, caller_addr, err := serverSocket.ReadFromUDP(buff)
 		if err != nil {
 			log.Println("FAILED TO READ SOCKET:", err)
